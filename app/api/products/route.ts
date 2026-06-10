@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { name, description, type, price, interval, intervalCount, intervalUnit, trialDays, planCount, planAmount, paymentFrequency, setupFee, active } = body
+  const { name, description, type, price, interval, intervalCount, intervalUnit, trialDays, planCount, planAmount, paymentFrequency, setupFee, price6Month, price12Month, price18Month, active } = body
 
   let stripeProductId: string | undefined
   let stripePriceId: string | undefined
@@ -76,6 +76,9 @@ export async function POST(req: Request) {
       planAmount: planAmount ?? null,
       paymentFrequency: paymentFrequency ?? null,
       setupFee: setupFee ?? null,
+      price6Month: price6Month ?? null,
+      price12Month: price12Month ?? null,
+      price18Month: price18Month ?? null,
       active: active ?? true,
       stripeProductId: stripeProductId ?? null,
       stripePriceId: stripePriceId ?? null,

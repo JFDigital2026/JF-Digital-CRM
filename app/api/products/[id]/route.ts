@@ -49,6 +49,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.planAmount !== undefined) updateData.planAmount = body.planAmount ?? null
   if (body.paymentFrequency !== undefined) updateData.paymentFrequency = body.paymentFrequency ?? null
   if (body.setupFee !== undefined) updateData.setupFee = body.setupFee ?? null
+  if (body.price6Month !== undefined) updateData.price6Month = body.price6Month ?? null
+  if (body.price12Month !== undefined) updateData.price12Month = body.price12Month ?? null
+  if (body.price18Month !== undefined) updateData.price18Month = body.price18Month ?? null
   if (body.active !== undefined) updateData.active = body.active
   if (body.archive === true) updateData.archivedAt = new Date()
   if (body.archive === false) updateData.archivedAt = null

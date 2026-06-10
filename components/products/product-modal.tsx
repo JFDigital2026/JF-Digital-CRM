@@ -33,6 +33,9 @@ interface Product {
   planAmount: number | null
   paymentFrequency: BillingInterval | null
   setupFee: number | null
+  price6Month: number | null
+  price12Month: number | null
+  price18Month: number | null
   active: boolean
   coupons?: Coupon[]
 }
@@ -77,6 +80,9 @@ const DEFAULT_FORM: Omit<Product, 'id' | 'coupons'> = {
   planAmount: null,
   paymentFrequency: 'MONTHLY',
   setupFee: null,
+  price6Month: null,
+  price12Month: null,
+  price18Month: null,
   active: true,
 }
 
@@ -183,6 +189,9 @@ export function ProductModal({ open, onClose, product, onSaved }: ProductModalPr
           planAmount: product.planAmount,
           paymentFrequency: product.paymentFrequency ?? 'MONTHLY',
           setupFee: product.setupFee,
+          price6Month: product.price6Month ?? null,
+          price12Month: product.price12Month ?? null,
+          price18Month: product.price18Month ?? null,
           active: product.active,
         })
         setCoupons(product.coupons ?? [])
@@ -420,6 +429,41 @@ export function ProductModal({ open, onClose, product, onSaved }: ProductModalPr
                         Charged once at signup, then ${form.price.toFixed(2)} {billingLabel}
                       </p>
                     ) : null}
+                  </div>
+
+                  {/* Retainer Duration Pricing */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Retainer Duration Pricing <span className="text-gray-400 font-normal">(optional — overrides base price per duration)</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-3">
+                      {([
+                        { label: '6 months', field: 'price6Month' as const },
+                        { label: '12 months', field: 'price12Month' as const },
+                        { label: '18 months', field: 'price18Month' as const },
+                      ]).map(({ label, field }) => (
+                        <div key={field}>
+                          <p className="text-xs text-gray-500 mb-1">{label}</p>
+                          <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#0D1B2A]/20">
+                            <span className="px-2 py-2 text-xs text-gray-400 bg-gray-50 border-r border-gray-200">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={form[field] ?? ''}
+                              onChange={(e) => set(field, e.target.value ? parseFloat(e.target.value) : null)}
+                              placeholder="—"
+                              className="flex-1 px-2 py-2 text-sm focus:outline-none min-w-0"
+                            />
+                          </div>
+                          {form[field] && (
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              ${(form[field]! * (field === 'price6Month' ? 6 : field === 'price12Month' ? 12 : 18)).toLocaleString()} total
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}

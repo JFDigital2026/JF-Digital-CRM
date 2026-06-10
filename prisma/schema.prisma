@@ -610,6 +610,9 @@ model Product {
   intervalCount    Int?
   intervalUnit     String?
   setupFee         Float?
+  price6Month      Float?
+  price12Month     Float?
+  price18Month     Float?
   stripePriceId    String?
   stripeProductId  String?
   active           Boolean           @default(true)
@@ -665,6 +668,8 @@ model Subscription {
   nextBillingDate    DateTime?
   scheduledStartDate DateTime?
   customAmount       Float?
+  durationMonths     Int?
+  endDate            DateTime?
   cancelledAt        DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt

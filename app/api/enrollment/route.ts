@@ -8,6 +8,7 @@ type ServiceLine = {
   productId: string
   amount: number
   chargeType: 'deposit' | 'on_completion' | 'recurring'
+  durationMonths?: number
 }
 
 export async function POST(req: Request) {
@@ -161,6 +162,9 @@ export async function POST(req: Request) {
           },
         })
       } else if (svc.chargeType === 'recurring') {
+        const endDate = svc.durationMonths
+          ? new Date(Date.now() + svc.durationMonths * 30.44 * 24 * 60 * 60 * 1000)
+          : null
         await prisma.subscription.create({
           data: {
             contactId,
@@ -169,6 +173,8 @@ export async function POST(req: Request) {
             customAmount: svc.amount,
             status: 'PENDING',
             stripeCustomerId,
+            durationMonths: svc.durationMonths ?? null,
+            endDate,
           },
         })
       }

@@ -92,6 +92,8 @@ interface BillingSubscription {
   nextBillingDate?: string | null
   scheduledStartDate?: string | null
   customAmount?: number | null
+  durationMonths?: number | null
+  endDate?: string | null
   cancelledAt?: string | null
   stripeCustomerId?: string | null
   contact: { id: string; firstName: string; lastName: string; email?: string | null } | null
@@ -151,6 +153,9 @@ interface Product {
   name: string
   type: string
   price: number
+  price6Month?: number | null
+  price12Month?: number | null
+  price18Month?: number | null
 }
 
 interface EnrollmentForm {
@@ -158,6 +163,7 @@ interface EnrollmentForm {
   contactId: string
   chargeType: 'deposit' | 'on_completion' | 'recurring'
   amount: string
+  durationMonths: 6 | 12 | 18 | null
 }
 
 interface Company {
@@ -357,6 +363,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
     contactId: '',
     chargeType: 'deposit',
     amount: '',
+    durationMonths: null,
   })
   const [enrollSaving, setEnrollSaving] = useState(false)
   const [enrollError, setEnrollError] = useState<string | null>(null)
@@ -727,6 +734,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
           productId: enrollForm.productId,
           amount,
           chargeType: enrollForm.chargeType,
+          durationMonths: enrollForm.durationMonths ?? undefined,
         }],
       }),
     })
@@ -1395,16 +1403,35 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
                           {billingSubscriptions.filter((s) => s.status === 'ACTIVE').map((sub) => (
                             <div key={sub.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-white p-3">
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-gray-900">{sub.product.name}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium text-gray-900">{sub.product.name}</p>
+                                  {sub.durationMonths && (
+                                    <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: 'rgba(65,90,119,0.10)', color: '#415A77' }}>
+                                      {sub.durationMonths} mo
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-gray-400">
-                                  <span>${(sub.customAmount ?? sub.product.price).toLocaleString()}/{sub.product.interval?.toLowerCase() ?? 'mo'}</span>
+                                  <span>${(sub.customAmount ?? sub.product.price).toLocaleString()}/mo</span>
+                                  {sub.durationMonths && sub.customAmount && (
+                                    <>
+                                      <span>·</span>
+                                      <span className="text-gray-500">${(sub.customAmount * sub.durationMonths).toLocaleString()} total</span>
+                                    </>
+                                  )}
                                   {sub.contact && (
                                     <>
                                       <span>·</span>
                                       <span>{sub.contact.firstName} {sub.contact.lastName}</span>
                                     </>
                                   )}
-                                  {sub.nextBillingDate && (
+                                  {sub.endDate && (
+                                    <>
+                                      <span>·</span>
+                                      <span>Ends {format(new Date(sub.endDate), 'MMM d, yyyy')}</span>
+                                    </>
+                                  )}
+                                  {!sub.endDate && sub.nextBillingDate && (
                                     <>
                                       <span>·</span>
                                       <span>Next: {format(new Date(sub.nextBillingDate), 'MMM d, yyyy')}</span>
@@ -1867,11 +1894,13 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
                   value={enrollForm.productId}
                   onChange={(e) => {
                     const prod = enrollProducts.find((p) => p.id === e.target.value)
+                    const isRecurring = prod?.type === 'SUBSCRIPTION'
                     setEnrollForm((f) => ({
                       ...f,
                       productId: e.target.value,
                       amount: prod ? String(prod.price) : '',
-                      chargeType: prod?.type === 'SUBSCRIPTION' ? 'recurring' : prod?.type === 'ONE_TIME' ? 'deposit' : f.chargeType,
+                      chargeType: isRecurring ? 'recurring' : prod?.type === 'ONE_TIME' ? 'deposit' : f.chargeType,
+                      durationMonths: isRecurring ? (f.durationMonths ?? 12) : null,
                     }))
                   }}
                   className={inputClass}
@@ -1901,7 +1930,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Amount ($)</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Amount ($/mo)</label>
                   <input
                     type="number"
                     min="0"
@@ -1916,7 +1945,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
                   <label className="mb-1 block text-xs font-medium text-gray-600">Charge Type</label>
                   <select
                     value={enrollForm.chargeType}
-                    onChange={(e) => setEnrollForm((f) => ({ ...f, chargeType: e.target.value as EnrollmentForm['chargeType'] }))}
+                    onChange={(e) => setEnrollForm((f) => ({ ...f, chargeType: e.target.value as EnrollmentForm['chargeType'], durationMonths: e.target.value === 'recurring' ? (f.durationMonths ?? 12) : null }))}
                     className={inputClass}
                   >
                     <option value="deposit">Deposit (charge now)</option>
@@ -1925,6 +1954,49 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
                   </select>
                 </div>
               </div>
+              {enrollForm.chargeType === 'recurring' && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-gray-600">Retainer Duration</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([6, 12, 18] as const).map((months) => {
+                      const prod = enrollProducts.find((p) => p.id === enrollForm.productId)
+                      const tierPrice = months === 6 ? prod?.price6Month : months === 12 ? prod?.price12Month : prod?.price18Month
+                      const isActive = enrollForm.durationMonths === months
+                      return (
+                        <button
+                          key={months}
+                          type="button"
+                          onClick={() => {
+                            setEnrollForm((f) => ({
+                              ...f,
+                              durationMonths: months,
+                              amount: tierPrice ? String(tierPrice) : f.amount,
+                            }))
+                          }}
+                          className="rounded-lg border px-3 py-2.5 text-center transition-all"
+                          style={{
+                            borderColor: isActive ? '#415A77' : '#e5e7eb',
+                            background: isActive ? 'rgba(65,90,119,0.08)' : 'white',
+                            color: isActive ? '#0D1B2A' : '#374151',
+                          }}
+                        >
+                          <div className="text-sm font-semibold">{months} mo</div>
+                          {tierPrice && (
+                            <div className="text-xs mt-0.5" style={{ color: isActive ? '#415A77' : '#9ca3af' }}>
+                              ${tierPrice.toLocaleString()}/mo
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {enrollForm.durationMonths && enrollForm.amount && (
+                    <p className="mt-1.5 text-xs text-gray-400">
+                      Total: ${(parseFloat(enrollForm.amount) * enrollForm.durationMonths).toLocaleString()} over {enrollForm.durationMonths} months
+                    </p>
+                  )}
+                </div>
+              )}
               {enrollError && (
                 <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{enrollError}</p>
               )}
