@@ -4,8 +4,6 @@ import { prisma } from '@/lib/prisma'
 import type Stripe from 'stripe'
 import { triggerAutomation } from '@/lib/automation-engine'
 
-export const config = { api: { bodyParser: false } }
-
 export async function POST(req: Request) {
   const body = await req.text()
   const sig = req.headers.get('stripe-signature')
