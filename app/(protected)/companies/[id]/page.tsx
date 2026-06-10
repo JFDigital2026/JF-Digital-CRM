@@ -747,8 +747,13 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
     setCasesLoading(true)
     try {
       const res = await fetch(`/api/companies/${params.id}/cases`)
-      const data = await res.json()
+      if (!res.ok) { setCases([]); return }
+      const text = await res.text()
+      if (!text) { setCases([]); return }
+      const data = JSON.parse(text)
       setCases(Array.isArray(data) ? data : [])
+    } catch {
+      setCases([])
     } finally {
       setCasesLoading(false)
     }

@@ -10,13 +10,16 @@ export async function GET(
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const cases = await prisma.appointmentCase.findMany({
-    where: { companyId: params.id },
-    include: { attendees: true },
-    orderBy: { appointmentDate: 'desc' },
-  })
-
-  return NextResponse.json(cases)
+  try {
+    const cases = await prisma.appointmentCase.findMany({
+      where: { companyId: params.id },
+      include: { attendees: true },
+      orderBy: { appointmentDate: 'desc' },
+    })
+    return NextResponse.json(cases)
+  } catch {
+    return NextResponse.json([])
+  }
 }
 
 export async function POST(
