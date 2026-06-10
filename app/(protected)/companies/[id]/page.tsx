@@ -698,7 +698,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
 
   const openEnrollModal = async () => {
     setEnrollError(null)
-    setEnrollForm({ productId: '', contactId: '', chargeType: 'deposit', amount: '' })
+    setEnrollForm({ productId: '', contactId: '', chargeType: 'deposit', amount: '', durationMonths: null })
     if (enrollProducts.length === 0) {
       const res = await fetch('/api/products')
       const data = await res.json()

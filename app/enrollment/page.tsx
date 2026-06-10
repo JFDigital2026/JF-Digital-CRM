@@ -44,16 +44,22 @@ const stripeWrapCls =
 const lblCls = 'mb-1 block text-[10px] font-semibold tracking-widest text-[#5a6a7e] uppercase'
 
 type ExistingCompany = { id: string; name: string }
-type Product = { id: string; name: string; price: number; type: string }
+type Product = {
+  id: string; name: string; price: number; type: string
+  price6Month?: number | null
+  price12Month?: number | null
+  price18Month?: number | null
+}
 type ServiceLine = {
   uid: string
   productId: string
   amount: string
   chargeType: 'deposit' | 'on_completion' | 'recurring'
+  durationMonths: number | null
 }
 
 function newLine(): ServiceLine {
-  return { uid: Math.random().toString(36).slice(2), productId: '', amount: '', chargeType: 'deposit' }
+  return { uid: Math.random().toString(36).slice(2), productId: '', amount: '', chargeType: 'deposit', durationMonths: null }
 }
 
 const CHARGE_TYPES: { value: ServiceLine['chargeType']; label: string; short: string }[] = [
@@ -185,7 +191,7 @@ function EnrollmentForm() {
         existingCompanyId,
         services: services
           .filter((s) => s.productId && (parseFloat(s.amount) || 0) > 0)
-          .map((s) => ({ productId: s.productId, amount: parseFloat(s.amount) || 0, chargeType: s.chargeType })),
+          .map((s) => ({ productId: s.productId, amount: parseFloat(s.amount) || 0, chargeType: s.chargeType, durationMonths: s.durationMonths ?? undefined })),
       }),
     })
 
@@ -348,67 +354,126 @@ function EnrollmentForm() {
             <p className="text-xs text-[#8a9bb0]">No services — enrollment saves payment on file only.</p>
           ) : (
             <div className="overflow-hidden rounded-xl border border-[#415A77]/15 bg-white/40 divide-y divide-[#415A77]/10">
-              {services.map((svc) => (
-                <div key={svc.uid} className="flex items-center gap-3 px-4 py-3">
-                  {/* Product */}
-                  <select
-                    value={svc.productId}
-                    onChange={(e) => {
-                      const p = products.find((pr) => pr.id === e.target.value)
-                      updateService(svc.uid, { productId: e.target.value, amount: p ? String(p.price) : svc.amount })
-                    }}
-                    className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[#0D1B2A] outline-none cursor-pointer truncate"
-                  >
-                    <option value="">— Product —</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-
-                  {/* Amount */}
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <span className="text-sm text-[#8a9bb0]">$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={svc.amount}
-                      onChange={(e) => updateService(svc.uid, { amount: e.target.value })}
-                      className="w-20 bg-transparent text-sm font-semibold text-[#0D1B2A] outline-none text-right"
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  {/* Charge type pills */}
-                  <div className="flex shrink-0 rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden">
-                    {CHARGE_TYPES.map((ct) => (
-                      <button
-                        key={ct.value}
-                        type="button"
-                        onClick={() => updateService(svc.uid, { chargeType: ct.value })}
-                        className={
-                          svc.chargeType === ct.value
-                            ? 'px-2.5 py-1 text-[10px] font-semibold bg-[#415A77] text-white transition-colors'
-                            : 'px-2.5 py-1 text-[10px] font-medium text-[#5a6a7e] hover:bg-[#415A77]/5 transition-colors'
-                        }
+              {services.map((svc) => {
+                const selectedProduct = products.find((p) => p.id === svc.productId) ?? null
+                const DURATIONS: { months: number; label: string; price: number | null | undefined }[] = [
+                  { months: 6,  label: '6 mo',  price: selectedProduct?.price6Month },
+                  { months: 12, label: '12 mo', price: selectedProduct?.price12Month },
+                  { months: 18, label: '18 mo', price: selectedProduct?.price18Month },
+                ]
+                return (
+                  <div key={svc.uid} className="flex flex-col px-4 py-3 gap-2">
+                    <div className="flex items-center gap-3">
+                      {/* Product */}
+                      <select
+                        value={svc.productId}
+                        onChange={(e) => {
+                          const p = products.find((pr) => pr.id === e.target.value)
+                          const isSubscription = p?.type === 'SUBSCRIPTION'
+                          updateService(svc.uid, {
+                            productId: e.target.value,
+                            amount: p ? String(p.price) : svc.amount,
+                            chargeType: isSubscription ? 'recurring' : svc.chargeType,
+                            durationMonths: isSubscription ? 12 : svc.durationMonths,
+                          })
+                        }}
+                        className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[#0D1B2A] outline-none cursor-pointer truncate"
                       >
-                        {ct.label}
-                      </button>
-                    ))}
-                  </div>
+                        <option value="">— Product —</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
 
-                  {/* Remove */}
-                  <button
-                    type="button"
-                    onClick={() => removeService(svc.uid)}
-                    className="shrink-0 text-[#8a9bb0] hover:text-red-400 transition-colors"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
+                      {/* Amount */}
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <span className="text-sm text-[#8a9bb0]">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={svc.amount}
+                          onChange={(e) => updateService(svc.uid, { amount: e.target.value })}
+                          className="w-20 bg-transparent text-sm font-semibold text-[#0D1B2A] outline-none text-right"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      {/* Charge type pills */}
+                      <div className="flex shrink-0 rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden">
+                        {CHARGE_TYPES.map((ct) => (
+                          <button
+                            key={ct.value}
+                            type="button"
+                            onClick={() => updateService(svc.uid, { chargeType: ct.value, durationMonths: ct.value !== 'recurring' ? null : svc.durationMonths })}
+                            className={
+                              svc.chargeType === ct.value
+                                ? 'px-2.5 py-1 text-[10px] font-semibold bg-[#415A77] text-white transition-colors'
+                                : 'px-2.5 py-1 text-[10px] font-medium text-[#5a6a7e] hover:bg-[#415A77]/5 transition-colors'
+                            }
+                          >
+                            {ct.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Remove */}
+                      <button
+                        type="button"
+                        onClick={() => removeService(svc.uid)}
+                        className="shrink-0 text-[#8a9bb0] hover:text-red-400 transition-colors"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* Duration selector — shown when recurring */}
+                    {svc.chargeType === 'recurring' && (
+                      <div className="flex items-center gap-2 pl-1">
+                        <span className="text-[10px] font-semibold tracking-widest text-[#5a6a7e] uppercase">Duration</span>
+                        <div className="flex rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden">
+                          {DURATIONS.map((d) => {
+                            const active = svc.durationMonths === d.months
+                            const totalValue = d.price != null
+                              ? `$${(d.price * d.months).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} total`
+                              : null
+                            return (
+                              <button
+                                key={d.months}
+                                type="button"
+                                onClick={() => {
+                                  updateService(svc.uid, {
+                                    durationMonths: d.months,
+                                    amount: d.price != null ? String(d.price) : svc.amount,
+                                  })
+                                }}
+                                className={
+                                  active
+                                    ? 'px-3 py-1 text-[10px] font-semibold bg-[#415A77] text-white transition-colors'
+                                    : 'px-3 py-1 text-[10px] font-medium text-[#5a6a7e] hover:bg-[#415A77]/5 transition-colors'
+                                }
+                              >
+                                {d.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {(() => {
+                          const active = DURATIONS.find((d) => d.months === svc.durationMonths)
+                          const tv = active?.price != null
+                            ? `$${(active.price * active.months).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} total`
+                            : null
+                          return tv ? (
+                            <span className="text-[10px] text-[#415A77] font-medium">{tv}</span>
+                          ) : null
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
