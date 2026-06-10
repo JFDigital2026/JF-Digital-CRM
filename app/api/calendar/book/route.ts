@@ -132,37 +132,122 @@ export async function POST(req: Request) {
     },
   })
 
-  // Confirmation email via Resend (non-fatal)
+  // Emails via Resend (non-fatal)
   if (process.env.RESEND_API_KEY) {
     try {
       const resend = new Resend(process.env.RESEND_API_KEY)
+      const from = process.env.RESEND_FROM_EMAIL ?? 'bookings@jf-digital.com'
+      const notifyEmail = 'jfreeman@jf-digital.com'
+
       const dateDisplay = startTime.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       })
       const timeDisplay = startTime.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
+        hour: '2-digit', minute: '2-digit',
       })
-      const bodyText = [
-        `Hi ${firstName},`,
-        '',
-        `Your booking has been confirmed.`,
-        '',
-        `Calendar: ${config.name}`,
-        `Date: ${dateDisplay}`,
-        `Time: ${timeDisplay}`,
-        `Duration: ${config.duration} minutes`,
-        ...(config.confirmationMessage ? ['', config.confirmationMessage] : []),
-      ].join('\n')
+
+      // ── Client confirmation email ──────────────────────────────────────────
+      const clientHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <!-- Header -->
+        <tr>
+          <td style="background:#1a2535;padding:28px 36px;">
+            <p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:-0.3px;">JF Digital</p>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px;">
+            <p style="margin:0 0 6px;color:#4b6070;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Booking Confirmed</p>
+            <h1 style="margin:0 0 24px;color:#1a2535;font-size:24px;font-weight:700;">${config.name}</h1>
+
+            <table cellpadding="0" cellspacing="0" style="background:#f4f6f8;border-radius:8px;padding:20px 24px;width:100%;margin-bottom:24px;">
+              <tr>
+                <td style="padding:6px 0;">
+                  <p style="margin:0;color:#6b7d8e;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Date &amp; Time</p>
+                  <p style="margin:4px 0 0;color:#1a2535;font-size:15px;font-weight:600;">${dateDisplay} at ${timeDisplay}</p>
+                </td>
+              </tr>
+              <tr><td style="padding:6px 0;">
+                <p style="margin:0;color:#6b7d8e;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Duration</p>
+                <p style="margin:4px 0 0;color:#1a2535;font-size:15px;font-weight:600;">${config.duration} minutes</p>
+              </td></tr>
+            </table>
+
+            ${config.confirmationMessage ? `<p style="margin:0 0 24px;color:#4a5568;font-size:14px;line-height:1.6;">${config.confirmationMessage}</p>` : ''}
+
+            <p style="margin:0 0 6px;color:#4a5568;font-size:14px;line-height:1.6;">
+              Hi ${firstName}, your appointment has been confirmed. If anything changes, please reach out as soon as possible so we can reschedule.
+            </p>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="padding:20px 36px;border-top:1px solid #edf0f3;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">JF Digital &middot; jf-digital.com</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
 
       await resend.emails.send({
-        from: 'noreply@resend.dev',
+        from,
         to: email,
-        subject: `Booking Confirmed: ${config.name}`,
-        text: bodyText,
+        subject: `Confirmed: ${config.name} on ${dateDisplay}`,
+        html: clientHtml,
+      })
+
+      // ── Owner notification email ───────────────────────────────────────────
+      const notifyHtml = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:32px 20px;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <tr><td style="background:#1a2535;padding:20px 28px;">
+      <p style="margin:0;color:#ffffff;font-size:15px;font-weight:700;">New Booking — ${config.name}</p>
+    </td></tr>
+    <tr><td style="padding:28px;">
+      <table cellpadding="0" cellspacing="0" width="100%">
+        <tr><td style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Name</p>
+          <p style="margin:3px 0 0;color:#1a2535;font-size:14px;font-weight:600;">${firstName} ${lastName}</p>
+        </td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Email</p>
+          <p style="margin:3px 0 0;color:#1a2535;font-size:14px;">${email}</p>
+        </td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Phone</p>
+          <p style="margin:3px 0 0;color:#1a2535;font-size:14px;">${phone ?? 'Not provided'}</p>
+        </td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Date &amp; Time</p>
+          <p style="margin:3px 0 0;color:#1a2535;font-size:14px;font-weight:600;">${dateDisplay} at ${timeDisplay}</p>
+        </td></tr>
+        ${notes ? `<tr><td style="padding:8px 0;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Notes</p>
+          <p style="margin:3px 0 0;color:#4a5568;font-size:14px;">${notes}</p>
+        </td></tr>` : ''}
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+      await resend.emails.send({
+        from,
+        to: notifyEmail,
+        subject: `New booking: ${firstName} ${lastName} — ${config.name} — ${dateDisplay} at ${timeDisplay}`,
+        html: notifyHtml,
       })
     } catch (_err) {
       // Email failure should not fail the booking
