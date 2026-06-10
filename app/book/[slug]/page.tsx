@@ -574,7 +574,7 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
   // ── Layout ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="w-full min-h-screen bg-[#e8ebee] flex">
+    <div className="w-full max-w-[1100px] mx-auto min-h-screen bg-[#e8ebee] flex">
       {/* Left panel */}
       <LeftPanel
         config={config}
