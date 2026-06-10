@@ -43,6 +43,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ url: portalSession.url })
   } catch (err) {
     console.error('Customer portal error:', err)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: 'Could not open billing portal. Please try again.' }, { status: 500 })
   }
 }

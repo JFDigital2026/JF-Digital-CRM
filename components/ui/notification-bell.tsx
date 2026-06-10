@@ -47,9 +47,15 @@ export function NotificationBell() {
   }
 
   useEffect(() => {
-    fetchNotifications()
-    const interval = setInterval(fetchNotifications, 30_000)
-    return () => clearInterval(interval)
+    // Skip polling while the tab is hidden; refetch immediately on return
+    const tick = () => { if (!document.hidden) fetchNotifications() }
+    tick()
+    const interval = setInterval(tick, 30_000)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', tick)
+    }
   }, [])
 
   useEffect(() => {
