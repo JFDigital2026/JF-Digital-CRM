@@ -305,6 +305,14 @@ function TimeSlots({
 
 // ─── Booking form (step 2) ────────────────────────────────────────────────────
 
+type MatchedContact = {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+}
+
 function BookingForm({
   config,
   selectedDate,
@@ -326,6 +334,50 @@ function BookingForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Contact lookup state
+  const [matchedContact, setMatchedContact] = useState<MatchedContact | null>(null)
+  const [confirmedContactId, setConfirmedContactId] = useState<string | null>(null)
+  const [lookingUp, setLookingUp] = useState(false)
+
+  async function lookupContact(email: string, phone: string) {
+    // Don't re-lookup if already confirmed
+    if (confirmedContactId) return
+    const params = new URLSearchParams()
+    if (email) params.set('email', email)
+    if (phone) params.set('phone', phone)
+    if (!email && !phone) return
+    setLookingUp(true)
+    try {
+      const res = await fetch(`/api/calendar/lookup-contact?${params}`)
+      const data = await res.json()
+      if (data.found) {
+        setMatchedContact(data.contact)
+      }
+    } catch {
+      // Lookup failure is non-fatal
+    } finally {
+      setLookingUp(false)
+    }
+  }
+
+  function handleConfirmMatch() {
+    if (!matchedContact) return
+    setConfirmedContactId(matchedContact.id)
+    setForm((f) => ({
+      ...f,
+      firstName: matchedContact.firstName,
+      lastName: matchedContact.lastName,
+      email: matchedContact.email,
+      phone: matchedContact.phone,
+    }))
+    setMatchedContact(null)
+  }
+
+  function handleDenyMatch() {
+    setMatchedContact(null)
+    setConfirmedContactId(null)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -343,6 +395,7 @@ function BookingForm({
           email: form.email,
           phone: form.phone,
           notes: form.notes,
+          confirmedContactId: confirmedContactId ?? undefined,
         }),
       })
       const data = res.ok ? await res.json() : null
@@ -363,6 +416,45 @@ function BookingForm({
     <div className="flex-1 px-10 py-10">
       <h2 className="text-lg font-bold text-[#1a2535] mb-6">Your details</h2>
       <form onSubmit={handleSubmit} className="space-y-4 max-w-[420px]">
+
+        {/* Welcome back banner */}
+        {matchedContact && (
+          <div className="rounded-xl border border-[#4b6070]/30 bg-[#4b6070]/8 px-4 py-4">
+            <p className="text-sm font-semibold text-[#1a2535] mb-0.5">
+              Welcome back, {matchedContact.firstName}!
+            </p>
+            <p className="text-xs text-[#6b7d8e] mb-3">
+              Is this still your information?
+            </p>
+            <div className="text-xs text-[#4a5568] space-y-0.5 mb-3">
+              <p>{matchedContact.firstName} {matchedContact.lastName}</p>
+              {matchedContact.email && <p>{matchedContact.email}</p>}
+              {matchedContact.phone && <p>{matchedContact.phone}</p>}
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={handleConfirmMatch}
+                className="flex-1 rounded-lg bg-[#4b6070] text-white text-xs font-semibold py-2 hover:bg-[#3a4f60] transition-colors">
+                Yes, that&apos;s me
+              </button>
+              <button type="button" onClick={handleDenyMatch}
+                className="flex-1 rounded-lg border border-[#c5ccd4] text-[#4a5568] text-xs font-medium py-2 hover:bg-gray-50 transition-colors">
+                Not me
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmed badge */}
+        {confirmedContactId && (
+          <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+            <p className="text-xs text-emerald-700 font-medium">Using your existing profile</p>
+            <button type="button" onClick={() => { setConfirmedContactId(null); setMatchedContact(null) }}
+              className="text-xs text-emerald-500 hover:text-emerald-700 underline">
+              Change
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
@@ -383,15 +475,32 @@ function BookingForm({
           <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
             Email <span className="text-red-500">*</span>
           </label>
-          <input required type="email" className={INPUT} value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+          <div className="relative">
+            <input
+              required
+              type="email"
+              className={INPUT}
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              onBlur={(e) => { if (!confirmedContactId) lookupContact(e.target.value, form.phone) }}
+            />
+            {lookingUp && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 rounded-full border-2 border-[#4b6070] border-t-transparent animate-spin" />
+            )}
+          </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
             Phone <span className="text-red-500">*</span>
           </label>
-          <input required type="tel" className={INPUT} value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+          <input
+            required
+            type="tel"
+            className={INPUT}
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            onBlur={(e) => { if (!confirmedContactId && !matchedContact) lookupContact(form.email, e.target.value) }}
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-[#4a5568] mb-1.5">

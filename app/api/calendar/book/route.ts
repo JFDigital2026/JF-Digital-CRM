@@ -70,7 +70,7 @@ async function isSlotAvailable(
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { calId, date, time, firstName, lastName, email, phone, notes } = body
+  const { calId, date, time, firstName, lastName, email, phone, notes, confirmedContactId } = body
 
   if (!calId || !date || !time || !firstName || !lastName || !email) {
     return NextResponse.json(
@@ -103,9 +103,28 @@ export async function POST(req: Request) {
   }
 
   // Find or create contact
-  let contact = email
-    ? await prisma.contact.findFirst({ where: { email } })
-    : null
+  let contact = null
+
+  // Use confirmed match from booking form lookup
+  if (confirmedContactId) {
+    contact = await prisma.contact.findUnique({ where: { id: confirmedContactId } })
+  }
+
+  // Fallback: email match
+  if (!contact && email) {
+    contact = await prisma.contact.findFirst({ where: { email } })
+  }
+
+  // Fallback: phone match (normalized)
+  if (!contact && phone) {
+    const normalized = phone.replace(/\D/g, '')
+    if (normalized.length >= 7) {
+      const candidates = await prisma.contact.findMany({
+        where: { phone: { not: null } },
+      })
+      contact = candidates.find((c) => c.phone && c.phone.replace(/\D/g, '') === normalized) ?? null
+    }
+  }
 
   if (!contact) {
     contact = await prisma.contact.create({
