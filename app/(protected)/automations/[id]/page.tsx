@@ -2,10 +2,18 @@
 
 export const dynamic = 'force-dynamic'
 
+import dynamic from 'next/dynamic'
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
-import { FlowDiagram } from '@/components/automations/flow-diagram'
 import { CopyEditorSlideOver } from '@/components/automations/copy-editor-slideover'
+
+const FlowDiagram = dynamic(
+  () => import('@/components/automations/flow-diagram').then((m) => ({ default: m.FlowDiagram })),
+  {
+    loading: () => <div className="flex-1 animate-pulse rounded-xl bg-gray-100" />,
+    ssr: false,
+  }
+)
 import { TestRunnerModal } from '@/components/automations/test-runner-modal'
 import { TRIGGER_LABELS, type AutomationDefinition, type AutomationStep } from '@/lib/automation-types'
 import { cn } from '@/lib/utils'

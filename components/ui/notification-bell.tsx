@@ -25,12 +25,16 @@ interface Notification {
   createdAt: string
 }
 
+const PAYMENT_FAILURE_TYPES = ['PAYMENT_FAILED', 'PAYMENT_DECLINED']
+
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; bg: string; color: string }> = {
   APPOINTMENT_BOOKED: { icon: Calendar,     bg: 'rgba(65,90,119,0.12)',    color: '#415A77' },
   FORM_SUBMITTED:     { icon: FileText,     bg: 'rgba(155,89,182,0.10)',   color: '#9B59B6' },
   MESSAGE_RECEIVED:   { icon: MessageSquare,bg: 'rgba(52,152,219,0.10)',   color: '#3498DB' },
   TASK_DUE:           { icon: Clock,        bg: 'rgba(230,126,34,0.10)',   color: '#E67E22' },
   PAYMENT_MADE:       { icon: DollarSign,   bg: 'rgba(39,174,96,0.10)',    color: '#27AE60' },
+  PAYMENT_FAILED:     { icon: AlertCircle,  bg: 'rgba(192,57,43,0.10)',    color: '#C0392B' },
+  PAYMENT_DECLINED:   { icon: AlertCircle,  bg: 'rgba(192,57,43,0.10)',    color: '#C0392B' },
 }
 
 export function NotificationBell() {
@@ -42,7 +46,16 @@ export function NotificationBell() {
   const fetchNotifications = async () => {
     try {
       const res = await fetch('/api/notifications')
-      if (res.ok) setNotifications(await res.json())
+      if (res.ok) {
+        const data: Notification[] = await res.json()
+        // Defensive client-side sort: payment failures always first
+        const sorted = [
+          ...data.filter((n) => PAYMENT_FAILURE_TYPES.includes(n.type)),
+          ...data.filter((n) => !PAYMENT_FAILURE_TYPES.includes(n.type) && !n.read),
+          ...data.filter((n) => !PAYMENT_FAILURE_TYPES.includes(n.type) && n.read),
+        ]
+        setNotifications(sorted)
+      }
     } catch {}
   }
 
@@ -161,6 +174,13 @@ export function NotificationBell() {
                 notifications.map((notification) => {
                   const config = TYPE_CONFIG[notification.type] ?? { icon: AlertCircle, bg: 'rgba(13,27,42,0.06)', color: '#778DA9' }
                   const Icon = config.icon
+                  const isPaymentFailure = PAYMENT_FAILURE_TYPES.includes(notification.type)
+                  const baseBackground = isPaymentFailure
+                    ? 'rgba(192,57,43,0.08)'
+                    : notification.read ? 'transparent' : 'rgba(65,90,119,0.04)'
+                  const hoverBackground = isPaymentFailure
+                    ? 'rgba(192,57,43,0.13)'
+                    : 'rgba(65,90,119,0.06)'
                   return (
                     <button
                       key={notification.id}
@@ -174,10 +194,10 @@ export function NotificationBell() {
                       className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-100"
                       style={{
                         borderBottom: '1px solid rgba(13,27,42,0.05)',
-                        background: notification.read ? 'transparent' : 'rgba(65,90,119,0.04)',
+                        background: baseBackground,
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(65,90,119,0.06)' }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = notification.read ? 'transparent' : 'rgba(65,90,119,0.04)' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = hoverBackground }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = baseBackground }}
                     >
                       <div
                         className="mt-0.5 flex shrink-0 items-center justify-center rounded-full"
@@ -186,12 +206,22 @@ export function NotificationBell() {
                         <Icon size={13} style={{ color: config.color }} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p
-                          className={cn('text-xs font-semibold')}
-                          style={{ color: notification.read ? '#778DA9' : '#0D1B2A' }}
-                        >
-                          {notification.title}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p
+                            className={cn('text-xs font-semibold')}
+                            style={{ color: notification.read ? '#778DA9' : '#0D1B2A' }}
+                          >
+                            {notification.title}
+                          </p>
+                          {isPaymentFailure && (
+                            <span
+                              className="shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                              style={{ background: 'rgba(192,57,43,0.12)', color: '#C0392B' }}
+                            >
+                              DECLINED
+                            </span>
+                          )}
+                        </div>
                         <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: '#778DA9' }}>
                           {notification.body}
                         </p>
@@ -202,7 +232,7 @@ export function NotificationBell() {
                       {!notification.read && (
                         <div
                           className="mt-1.5 shrink-0 rounded-full"
-                          style={{ width: 6, height: 6, background: '#415A77' }}
+                          style={{ width: 6, height: 6, background: isPaymentFailure ? '#C0392B' : '#415A77' }}
                         />
                       )}
                     </button>

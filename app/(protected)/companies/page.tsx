@@ -143,6 +143,11 @@ export default function CompaniesPage() {
     fetchCompanies()
   }, [fetchCompanies])
 
+  // Prefetch the first page of company detail routes so navigation feels instant
+  useEffect(() => {
+    companies.forEach((c) => router.prefetch(`/companies/${c.id}`))
+  }, [companies, router])
+
   // ─── Handlers ────────────────────────────────────────────────────────────
 
   const handleSearchChange = (v: string) => {

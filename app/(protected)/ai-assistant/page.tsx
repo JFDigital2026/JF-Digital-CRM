@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type FormEvent, type KeyboardEvent } from 'react'
 import {
-  Sparkles, Plus, Trash2, Send, X, MessageSquare, Wrench, ChevronRight, Edit2, Check,
+  Sparkles, Plus, Trash2, Send, X, MessageSquare, Wrench, ChevronRight, Edit2, Check, CheckCircle2,
 } from 'lucide-react'
 import { useAI, type ChatMessage } from '@/components/ai/ai-provider'
 import { useAIContext, buildSuggestedPrompts } from '@/hooks/use-ai-context'
@@ -46,7 +46,7 @@ function ToolBadge({ name, result }: { name: string; result?: string }) {
         )}
       >
         <Wrench size={10} />
-        {result ? `✓ ${labels[name] ?? name}` : `${labels[name] ?? name}…`}
+        {result ? <><CheckCircle2 size={10} />{labels[name] ?? name}</> : `${labels[name] ?? name}…`}
         {result && <ChevronRight size={10} className={cn('transition-transform', expanded && 'rotate-90')} />}
       </button>
       {expanded && result && (

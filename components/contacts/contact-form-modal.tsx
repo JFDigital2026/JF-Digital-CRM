@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Plus, User, Building2 } from 'lucide-react'
+import { X, Plus, User, Building2, CheckCircle2 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { CustomFieldInput, type CustomField } from '@/components/contacts/custom-field-input'
 import { cn } from '@/lib/utils'
@@ -268,7 +268,7 @@ export function ContactFormModal({
                   </div>
                 )}
               </div>
-              {selectedCompany && <p className="mt-1.5 text-xs text-emerald-600">✓ Linked to {selectedCompany.name}</p>}
+              {selectedCompany && <p className="mt-1.5 flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 size={12} style={{color:'#27AE60'}} /> Linked to {selectedCompany.name}</p>}
               {newCompanyName && !selectedCompany && <p className="mt-1.5 text-xs text-[#415A77]">Will create new company: {newCompanyName}</p>}
             </section>
 

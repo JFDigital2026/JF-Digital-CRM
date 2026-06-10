@@ -15,7 +15,15 @@ export async function GET() {
     take: 50,
   })
 
-  return NextResponse.json(notifications)
+  const PAYMENT_FAILURE_TYPES = ['PAYMENT_FAILED', 'PAYMENT_DECLINED']
+
+  const sorted = [
+    ...notifications.filter((n) => PAYMENT_FAILURE_TYPES.includes(n.type)),
+    ...notifications.filter((n) => !PAYMENT_FAILURE_TYPES.includes(n.type) && !n.read),
+    ...notifications.filter((n) => !PAYMENT_FAILURE_TYPES.includes(n.type) && n.read),
+  ]
+
+  return NextResponse.json(sorted)
 }
 
 export async function POST(req: Request) {

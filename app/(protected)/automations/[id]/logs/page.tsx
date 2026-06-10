@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import type { StepLog } from '@/lib/automation-types'
 import { cn } from '@/lib/utils'
+import { CheckCircle2, X as XIcon, SkipForward } from 'lucide-react'
 
 type LogEntry = {
   id: string
@@ -23,10 +24,10 @@ const STATUS: Record<string, { label: string; classes: string }> = {
   SKIPPED: { label: 'Skipped', classes: 'bg-gray-50 text-gray-600 border-gray-200' },
 }
 
-const LOG_STYLES: Record<StepLog['status'], { bg: string; icon: string }> = {
-  success: { bg: 'bg-emerald-50 border-emerald-100 text-emerald-800', icon: '✓' },
-  skipped: { bg: 'bg-amber-50 border-amber-100 text-amber-800',       icon: '⏭' },
-  error:   { bg: 'bg-red-50 border-red-100 text-red-700',             icon: '✕' },
+const LOG_STYLES: Record<StepLog['status'], { bg: string; Icon: React.ElementType; iconColor: string }> = {
+  success: { bg: 'bg-emerald-50 border-emerald-100 text-emerald-800', Icon: CheckCircle2, iconColor: '#27AE60' },
+  skipped: { bg: 'bg-amber-50 border-amber-100 text-amber-800',       Icon: SkipForward,  iconColor: '#E67E22' },
+  error:   { bg: 'bg-red-50 border-red-100 text-red-700',             Icon: XIcon,        iconColor: '#C0392B' },
 }
 
 export default function AutomationLogsPage() {
@@ -169,7 +170,7 @@ export default function AutomationLogsPage() {
                     const st = LOG_STYLES[sl.status] ?? LOG_STYLES.error
                     return (
                       <div key={i} className={cn('flex items-start gap-2.5 rounded-lg border px-3.5 py-2 text-xs', st.bg)}>
-                        <span className="font-bold mt-0.5 shrink-0">{st.icon}</span>
+                        <st.Icon size={13} className="mt-0.5 shrink-0" style={{color: st.iconColor}} />
                         <div className="flex-1 min-w-0">
                           <span className="font-medium">{sl.stepLabel}</span>
                           {sl.detail && <span className="ml-1.5 opacity-75">{sl.detail}</span>}

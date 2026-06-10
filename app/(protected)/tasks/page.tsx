@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, LayoutList, Columns, CheckCircle2 } from 'lucide-react'
+import { Plus, LayoutList, Columns, CheckCircle2, X as XIcon } from 'lucide-react'
 import { format, isToday, isPast, startOfDay, isYesterday } from 'date-fns'
 import {
   DndContext,
@@ -174,7 +174,7 @@ function PriorityPicker({
                 'bg-red-500': p === 'HIGH',
               })} />
               {PRIORITY_LABELS[p]}
-              {p === priority && <span className="ml-auto text-[#415A77]">✓</span>}
+              {p === priority && <CheckCircle2 size={13} className="ml-auto" style={{color:'#415A77'}} />}
             </button>
           ))}
         </div>
@@ -520,7 +520,7 @@ export default function TasksPage() {
             onClick={() => setSelectedIds(new Set())}
             className="text-gray-400 hover:text-white ml-1 transition-colors"
           >
-            ✕
+            <XIcon size={13} />
           </button>
         </div>
       )}

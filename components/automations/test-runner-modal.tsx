@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import type { AutomationDefinition, StepLog } from '@/lib/automation-types'
 import { cn } from '@/lib/utils'
+import { CheckCircle2, X as XIcon, SkipForward } from 'lucide-react'
 
 interface Contact {
   id: string
@@ -18,10 +19,10 @@ interface TestRunnerModalProps {
   onClose: () => void
 }
 
-const LOG_STYLES: Record<StepLog['status'], { bg: string; icon: string; text: string }> = {
-  success: { bg: 'bg-emerald-50 border-emerald-200', icon: '✓', text: 'text-emerald-700' },
-  skipped: { bg: 'bg-amber-50 border-amber-200',    icon: '⏭', text: 'text-amber-700'  },
-  error:   { bg: 'bg-red-50 border-red-200',         icon: '✕', text: 'text-red-600'    },
+const LOG_STYLES: Record<StepLog['status'], { bg: string; Icon: React.ElementType; iconColor: string; text: string }> = {
+  success: { bg: 'bg-emerald-50 border-emerald-200', Icon: CheckCircle2, iconColor: '#27AE60', text: 'text-emerald-700' },
+  skipped: { bg: 'bg-amber-50 border-amber-200',    Icon: SkipForward,  iconColor: '#E67E22', text: 'text-amber-700'  },
+  error:   { bg: 'bg-red-50 border-red-200',         Icon: XIcon,        iconColor: '#C0392B', text: 'text-red-600'    },
 }
 
 export function TestRunnerModal({ automationId, definition, onClose }: TestRunnerModalProps) {
@@ -188,7 +189,7 @@ export function TestRunnerModal({ automationId, definition, onClose }: TestRunne
                 const style = LOG_STYLES[log.status]
                 return (
                   <div key={i} className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', style.bg)}>
-                    <span className={cn('font-bold text-sm mt-0.5 shrink-0', style.text)}>{style.icon}</span>
+                    <style.Icon size={14} className="mt-0.5 shrink-0" style={{color: style.iconColor}} />
                     <div className="flex-1 min-w-0">
                       <p className={cn('text-sm font-medium', style.text)}>{log.stepLabel}</p>
                       <p className={cn('text-xs mt-0.5 break-words', style.text, 'opacity-75')}>{log.detail}</p>

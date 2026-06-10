@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ExternalLink, Trash2, Circle, Clock, CheckSquare, Mail, Phone, MessageSquare, Plus, X, CreditCard } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Trash2, Circle, Clock, CheckSquare, Mail, Phone, MessageSquare, Plus, X, CreditCard, User, Pencil, RefreshCw, CheckCircle2, FileText, ClipboardList } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { TabGroup } from '@/components/ui/tab-group'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -36,9 +36,17 @@ const NEXT_TASK_STATUS: Record<string, string> = {
 const CHANNEL_ICON: Record<string, React.ElementType> = {
   EMAIL: Mail, SMS: Phone, INSTAGRAM: MessageSquare, FACEBOOK: MessageSquare, LINKEDIN: MessageSquare,
 }
-const ACTIVITY_ICONS: Record<string, string> = {
-  'contact.created': '👤', 'contact.updated': '✏️', 'status.changed': '🔄',
-  'task.created': '✅', 'note.added': '📝', 'message.sent': '💬',
+const ACTIVITY_ICON_MAP: Record<string, React.ElementType> = {
+  'contact.created': User,
+  'contact.updated': Pencil,
+  'status.changed': RefreshCw,
+  'task.created': CheckCircle2,
+  'note.added': FileText,
+  'message.sent': MessageSquare,
+}
+function ActivityIcon({ type }: { type: string }) {
+  const Icon = ACTIVITY_ICON_MAP[type] ?? ClipboardList
+  return <Icon size={14} style={{color:'#415A77'}} />
 }
 
 const RIGHT_TABS = [
@@ -233,7 +241,13 @@ export default function ContactDetailPage({ params }: { params: { id: string } }
         actions={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {/* payment form — coming soon */}}
+              onClick={() => {
+                if (contact.companyId) {
+                  router.push(`/companies/${contact.companyId}?tab=billing`)
+                } else {
+                  alert('No company linked to this contact')
+                }
+              }}
               className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
               <CreditCard size={14} />
@@ -386,7 +400,7 @@ export default function ContactDetailPage({ params }: { params: { id: string } }
                   ? <EmptyState title="No activity yet" />
                   : tabData.activity.map((log: any) => (
                     <div key={log.id} className="flex gap-3 border-b border-gray-50 py-3 last:border-0">
-                      <span className="text-base">{ACTIVITY_ICONS[log.type] ?? '📋'}</span>
+                      <ActivityIcon type={log.type} />
                       <div>
                         <p className="text-sm text-gray-900">{log.description}</p>
                         <p className="text-xs text-gray-400">{log.user?.name} · {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}</p>

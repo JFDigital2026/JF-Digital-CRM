@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { ExternalLink, Edit, Mail, Phone, MessageSquare, CheckSquare, Clock, Circle, Plus, Trash2 } from 'lucide-react'
+import { ExternalLink, Edit, Mail, Phone, MessageSquare, CheckSquare, Clock, Circle, Plus, Trash2, User, Pencil, RefreshCw, CheckCircle2, FileText, ClipboardList, Download } from 'lucide-react'
 import { TaskFormModal } from '@/components/tasks/task-form-modal'
 import { useRouter } from 'next/navigation'
 import { SlideOver } from '@/components/ui/slide-over'
@@ -30,14 +30,18 @@ const CHANNEL_ICON: Record<string, React.ElementType> = {
   FACEBOOK: MessageSquare, LINKEDIN: MessageSquare,
 }
 
-const ACTIVITY_ICONS: Record<string, string> = {
-  'contact.created': '👤',
-  'contact.updated': '✏️',
-  'status.changed': '🔄',
-  'task.created': '✅',
-  'note.added': '📝',
-  'message.sent': '💬',
-  'contacts.imported': '📥',
+const ACTIVITY_ICON_MAP: Record<string, React.ElementType> = {
+  'contact.created': User,
+  'contact.updated': Pencil,
+  'status.changed': RefreshCw,
+  'task.created': CheckCircle2,
+  'note.added': FileText,
+  'message.sent': MessageSquare,
+  'contacts.imported': Download,
+}
+function ActivityIcon({ type }: { type: string }) {
+  const Icon = ACTIVITY_ICON_MAP[type] ?? ClipboardList
+  return <Icon size={14} style={{color:'#415A77'}} />
 }
 
 interface ContactSlideOverProps {
@@ -281,7 +285,7 @@ export function ContactSlideOver({ contactId, onClose, onEdit }: ContactSlideOve
                     <div className="flex flex-col gap-0">
                       {tabData.activity.map((log: any) => (
                         <div key={log.id} className="flex gap-3 border-b border-gray-50 py-3 last:border-0">
-                          <span className="mt-0.5 text-base">{ACTIVITY_ICONS[log.type] ?? '📋'}</span>
+                          <ActivityIcon type={log.type} />
                           <div className="min-w-0 flex-1">
                             <p className="text-sm text-gray-900">{log.description}</p>
                             <p className="text-xs text-gray-400">

@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useRef, useState, useCallback, type ElementType } from 'react'
+import { CheckCircle2, X as XIcon, SkipForward } from 'lucide-react'
 import type { AutomationDefinition, AutomationStep, StepLog, StepType } from '@/lib/automation-types'
 import { STEP_BORDER_COLORS, STEP_LABELS, TRIGGER_LABELS, COPY_EDITABLE_TYPES } from '@/lib/automation-types'
 import { cn } from '@/lib/utils'
@@ -9,15 +10,15 @@ import { cn } from '@/lib/utils'
 
 function StepResult({ log }: { log: StepLog | undefined }) {
   if (!log) return null
-  const map = {
-    success: { bg: 'bg-emerald-50 border-emerald-200 text-emerald-700', icon: '✓' },
-    skipped: { bg: 'bg-amber-50 border-amber-200 text-amber-700', icon: '⏭' },
-    error:   { bg: 'bg-red-50 border-red-200 text-red-600', icon: '✕' },
+  const map: Record<string, { bg: string; Icon: ElementType; iconColor: string }> = {
+    success: { bg: 'bg-emerald-50 border-emerald-200 text-emerald-700', Icon: CheckCircle2, iconColor: '#27AE60' },
+    skipped: { bg: 'bg-amber-50 border-amber-200 text-amber-700',       Icon: SkipForward,  iconColor: '#E67E22' },
+    error:   { bg: 'bg-red-50 border-red-200 text-red-600',             Icon: XIcon,        iconColor: '#C0392B' },
   }
   const v = map[log.status]
   return (
-    <div className={cn('mt-1.5 rounded-lg border px-2.5 py-1.5 text-[11px]', v.bg)}>
-      <span className="font-bold mr-1">{v.icon}</span>
+    <div className={cn('mt-1.5 flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px]', v.bg)}>
+      <v.Icon size={12} className="mt-0.5 shrink-0" style={{color: v.iconColor}} />
       {log.detail}
     </div>
   )

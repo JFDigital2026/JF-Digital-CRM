@@ -8,7 +8,7 @@ import {
   ArrowLeft, ExternalLink, Users, Briefcase, Trash2,
   Circle, Clock, CheckSquare, Plus, Building2, User,
   FileText, Activity, CheckCircle2, X, CreditCard, Download,
-  ChevronDown,
+  ChevronDown, RefreshCw, Calendar, Link as LinkIcon,
 } from 'lucide-react'
 import { format, formatDistanceToNow, addWeeks, addMonths } from 'date-fns'
 import { TabGroup } from '@/components/ui/tab-group'
@@ -20,10 +20,18 @@ import { TaskFormModal } from '@/components/tasks/task-form-modal'
 import { Modal } from '@/components/ui/modal'
 import { CRMAvatar } from '@/components/ui/crm-avatar'
 import { FileUploader, type UploadedFile } from '@/components/ui/file-uploader'
+import nextDynamic from 'next/dynamic'
 import { ContactSlideOver } from '@/components/contacts/contact-slide-over'
-import { OrgChart } from '@/components/companies/org-chart'
 import { AddCardModal } from '@/components/companies/add-card-modal'
 import { cn } from '@/lib/utils'
+
+const OrgChart = nextDynamic(
+  () => import('@/components/companies/org-chart').then((m) => ({ default: m.OrgChart })),
+  {
+    loading: () => <div className="h-48 animate-pulse rounded-xl bg-gray-100" />,
+    ssr: false,
+  }
+)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,6 +130,36 @@ interface PaymentMethod {
   isDefault: boolean
 }
 
+interface AppointmentAttendee {
+  id: string
+  name: string
+  role?: string | null
+}
+
+interface AppointmentCase {
+  id: string
+  title: string
+  appointmentDate: string
+  fathomLink?: string | null
+  notes?: string | null
+  createdAt: string
+  attendees: AppointmentAttendee[]
+}
+
+interface Product {
+  id: string
+  name: string
+  type: string
+  price: number
+}
+
+interface EnrollmentForm {
+  productId: string
+  contactId: string
+  chargeType: 'deposit' | 'on_completion' | 'recurring'
+  amount: string
+}
+
 interface Company {
   id: string
   name: string
@@ -155,6 +193,7 @@ const BOTTOM_TABS = [
   { key: 'activity', label: 'Activity' },
   { key: 'files', label: 'Files' },
   { key: 'billing', label: 'Billing' },
+  { key: 'cases', label: 'Cases' },
 ]
 
 const inputClass =
@@ -309,6 +348,34 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
   const [editExpYear, setEditExpYear] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+
+  // Re-Enroll modal state
+  const [showEnrollModal, setShowEnrollModal] = useState(false)
+  const [enrollProducts, setEnrollProducts] = useState<Product[]>([])
+  const [enrollForm, setEnrollForm] = useState<EnrollmentForm>({
+    productId: '',
+    contactId: '',
+    chargeType: 'deposit',
+    amount: '',
+  })
+  const [enrollSaving, setEnrollSaving] = useState(false)
+  const [enrollError, setEnrollError] = useState<string | null>(null)
+
+  // Cases state
+  const [cases, setCases] = useState<AppointmentCase[]>([])
+  const [casesLoading, setCasesLoading] = useState(false)
+  const [showCaseModal, setShowCaseModal] = useState(false)
+  const [caseSaving, setCaseSaving] = useState(false)
+  const [caseForm, setCaseForm] = useState({
+    title: '',
+    appointmentDate: '',
+    fathomLink: '',
+    notes: '',
+    attendees: [{ name: '', role: '' }],
+  })
+  const [attendeeSearch, setAttendeeSearch] = useState<string[]>([''])
+  const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null)
+  const [confirmDeleteCaseId, setConfirmDeleteCaseId] = useState<string | null>(null)
 
   // Mark Build Complete modal state
   const [showMarkComplete, setShowMarkComplete] = useState(false)
@@ -620,6 +687,109 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
     setMarkCompleteSaving(false)
   }
 
+  // ─── Re-Enroll ──────────────────────────────────────────────────────────────
+
+  const openEnrollModal = async () => {
+    setEnrollError(null)
+    setEnrollForm({ productId: '', contactId: '', chargeType: 'deposit', amount: '' })
+    if (enrollProducts.length === 0) {
+      const res = await fetch('/api/products')
+      const data = await res.json()
+      const prods: Product[] = (data.products ?? []).map((p: Product) => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        price: p.price,
+      }))
+      setEnrollProducts(prods)
+    }
+    setShowEnrollModal(true)
+  }
+
+  const handleEnrollSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!enrollForm.productId) return
+    setEnrollSaving(true)
+    setEnrollError(null)
+    const selectedProduct = enrollProducts.find((p) => p.id === enrollForm.productId)
+    const amount = enrollForm.amount ? parseFloat(enrollForm.amount) : (selectedProduct?.price ?? 0)
+    const selectedContact = contacts.find((c) => c.id === enrollForm.contactId)
+    const res = await fetch('/api/enrollment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        companyName: company?.name ?? '',
+        existingCompanyId: params.id,
+        firstName: selectedContact?.firstName,
+        lastName: selectedContact?.lastName,
+        email: selectedContact?.email,
+        services: [{
+          productId: enrollForm.productId,
+          amount,
+          chargeType: enrollForm.chargeType,
+        }],
+      }),
+    })
+    const data = await res.json()
+    setEnrollSaving(false)
+    if (!res.ok) {
+      setEnrollError(data.error ?? 'Enrollment failed.')
+    } else {
+      setShowEnrollModal(false)
+      if (activeTab === 'billing') fetchBilling()
+      else { setActiveTab('billing'); fetchBilling() }
+    }
+  }
+
+  // ─── Cases ──────────────────────────────────────────────────────────────────
+
+  const fetchCases = useCallback(async () => {
+    setCasesLoading(true)
+    try {
+      const res = await fetch(`/api/companies/${params.id}/cases`)
+      const data = await res.json()
+      setCases(Array.isArray(data) ? data : [])
+    } finally {
+      setCasesLoading(false)
+    }
+  }, [params.id])
+
+  useEffect(() => {
+    if (activeTab === 'cases') fetchCases()
+  }, [activeTab, fetchCases])
+
+  const handleCaseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!caseForm.title || !caseForm.appointmentDate) return
+    setCaseSaving(true)
+    const res = await fetch(`/api/companies/${params.id}/cases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: caseForm.title,
+        appointmentDate: caseForm.appointmentDate,
+        fathomLink: caseForm.fathomLink || null,
+        notes: caseForm.notes || null,
+        attendees: caseForm.attendees.filter((a) => a.name.trim()),
+      }),
+    })
+    setCaseSaving(false)
+    if (res.ok) {
+      setShowCaseModal(false)
+      setCaseForm({ title: '', appointmentDate: '', fathomLink: '', notes: '', attendees: [{ name: '', role: '' }] })
+      setAttendeeSearch([''])
+      fetchCases()
+    }
+  }
+
+  const handleDeleteCase = async (caseId: string) => {
+    setDeletingCaseId(caseId)
+    await fetch(`/api/companies/${params.id}/cases/${caseId}`, { method: 'DELETE' })
+    setDeletingCaseId(null)
+    setConfirmDeleteCaseId(null)
+    fetchCases()
+  }
+
   // ─── Hierarchy ──────────────────────────────────────────────────────────────
 
   const handleHierarchyUpdate = useCallback(async (hierarchyJson: Record<string, string | null>) => {
@@ -758,6 +928,12 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
                   className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <Briefcase size={12} /> Add Opportunity
+                </button>
+                <button
+                  onClick={openEnrollModal}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#415A77] px-3 py-2 text-xs font-medium text-white hover:bg-[#0D1B2A] transition-colors"
+                >
+                  <RefreshCw size={12} /> Re-Enroll
                 </button>
               </div>
             </div>
@@ -1037,6 +1213,103 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
               />
             )}
 
+            {/* Cases Tab */}
+            {activeTab === 'cases' && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Appointment Cases</h3>
+                  <button
+                    onClick={() => {
+                      setCaseForm({ title: '', appointmentDate: '', fathomLink: '', notes: '', attendees: [{ name: '', role: '' }] })
+                      setAttendeeSearch([''])
+                      setShowCaseModal(true)
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#415A77] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0D1B2A] transition-colors"
+                  >
+                    <Plus size={12} /> Add Case
+                  </button>
+                </div>
+
+                {casesLoading ? (
+                  <LoadingSkeleton variant="list" rows={3} />
+                ) : cases.length === 0 ? (
+                  <EmptyState title="No cases yet" description="Log appointment cases and Fathom recordings for this company." />
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {cases.map((c) => (
+                      <div key={c.id} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-semibold text-gray-900">{c.title}</p>
+                              <span className="flex items-center gap-1 text-xs text-gray-400">
+                                <Calendar size={11} />
+                                {format(new Date(c.appointmentDate), 'MMM d, yyyy h:mm a')}
+                              </span>
+                            </div>
+                            {c.fathomLink && (
+                              <a
+                                href={c.fathomLink.startsWith('http') ? c.fathomLink : `https://${c.fathomLink}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 inline-flex items-center gap-1 text-xs text-[#415A77] hover:underline"
+                              >
+                                <LinkIcon size={11} /> Fathom Recording
+                              </a>
+                            )}
+                            {c.attendees.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {c.attendees.map((a) => (
+                                  <span
+                                    key={a.id}
+                                    className="inline-flex items-center gap-1 rounded-full bg-[#415A77]/10 px-2 py-0.5 text-xs text-[#415A77]"
+                                  >
+                                    <User size={10} />
+                                    {a.name}{a.role ? ` · ${a.role}` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {c.notes && (
+                              <p className="mt-2 text-xs text-gray-500 leading-relaxed whitespace-pre-line">{c.notes}</p>
+                            )}
+                          </div>
+                          <div className="shrink-0">
+                            {confirmDeleteCaseId === c.id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">Delete?</span>
+                                <button
+                                  onClick={() => handleDeleteCase(c.id)}
+                                  disabled={deletingCaseId === c.id}
+                                  className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                >
+                                  {deletingCaseId === c.id ? '…' : 'Yes'}
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteCaseId(null)}
+                                  className="rounded px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteCaseId(c.id)}
+                                className="rounded-lg p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                                aria-label="Delete case"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Billing Tab */}
             {activeTab === 'billing' && (
               <div className="flex flex-col gap-6">
@@ -1101,7 +1374,15 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
 
                     {/* Active Subscriptions */}
                     <div>
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Active Subscriptions</h3>
+                      <div className="mb-2 flex items-center justify-between">
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Active Subscriptions</h3>
+                        <button
+                          onClick={openEnrollModal}
+                          className="flex items-center gap-1 rounded-lg bg-[#415A77] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0D1B2A] transition-colors"
+                        >
+                          <Plus size={11} /> Enroll
+                        </button>
+                      </div>
                       {billingSubscriptions.filter((s) => s.status === 'ACTIVE').length === 0 ? (
                         <p className="text-sm text-gray-400">No active subscriptions.</p>
                       ) : (
@@ -1556,6 +1837,265 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
           </div>
         )
       })()}
+
+      {/* Re-Enroll Modal */}
+      {showEnrollModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !enrollSaving && setShowEnrollModal(false)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-white px-6 py-7 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#415A77]/10">
+                  <RefreshCw size={16} className="text-[#415A77]" />
+                </div>
+                <h2 className="text-base font-bold text-gray-900">Re-Enroll / Add Product</h2>
+              </div>
+              <button onClick={() => setShowEnrollModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleEnrollSubmit} className="flex flex-col gap-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Product *</label>
+                <select
+                  required
+                  value={enrollForm.productId}
+                  onChange={(e) => {
+                    const prod = enrollProducts.find((p) => p.id === e.target.value)
+                    setEnrollForm((f) => ({
+                      ...f,
+                      productId: e.target.value,
+                      amount: prod ? String(prod.price) : '',
+                      chargeType: prod?.type === 'SUBSCRIPTION' ? 'recurring' : prod?.type === 'ONE_TIME' ? 'deposit' : f.chargeType,
+                    }))
+                  }}
+                  className={inputClass}
+                >
+                  <option value="">— Select product —</option>
+                  {enrollProducts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · ${p.price.toLocaleString()} · {p.type.replace('_', ' ').toLowerCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Contact (optional)</label>
+                <select
+                  value={enrollForm.contactId}
+                  onChange={(e) => setEnrollForm((f) => ({ ...f, contactId: e.target.value }))}
+                  className={inputClass}
+                >
+                  <option value="">— No specific contact —</option>
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.firstName} {c.lastName}{c.email ? ` · ${c.email}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Amount ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={enrollForm.amount}
+                    onChange={(e) => setEnrollForm((f) => ({ ...f, amount: e.target.value }))}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Charge Type</label>
+                  <select
+                    value={enrollForm.chargeType}
+                    onChange={(e) => setEnrollForm((f) => ({ ...f, chargeType: e.target.value as EnrollmentForm['chargeType'] }))}
+                    className={inputClass}
+                  >
+                    <option value="deposit">Deposit (charge now)</option>
+                    <option value="on_completion">On completion</option>
+                    <option value="recurring">Recurring subscription</option>
+                  </select>
+                </div>
+              </div>
+              {enrollError && (
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{enrollError}</p>
+              )}
+              <div className="flex justify-end gap-2 border-t border-gray-100 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEnrollModal(false)}
+                  disabled={enrollSaving}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={enrollSaving || !enrollForm.productId}
+                  className="rounded-lg bg-[#415A77] px-4 py-2 text-sm font-medium text-white hover:bg-[#0D1B2A] disabled:opacity-50 transition-colors"
+                >
+                  {enrollSaving ? 'Enrolling…' : 'Enroll'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Case Modal */}
+      {showCaseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !caseSaving && setShowCaseModal(false)} />
+          <div className="relative w-full max-w-lg rounded-2xl bg-white px-6 py-7 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#415A77]/10">
+                  <Calendar size={16} className="text-[#415A77]" />
+                </div>
+                <h2 className="text-base font-bold text-gray-900">Add Appointment Case</h2>
+              </div>
+              <button onClick={() => setShowCaseModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCaseSubmit} className="flex flex-col gap-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Appointment Title *</label>
+                <input
+                  required
+                  value={caseForm.title}
+                  onChange={(e) => setCaseForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="e.g. Strategy call - Q3 review"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Appointment Date &amp; Time *</label>
+                <input
+                  required
+                  type="datetime-local"
+                  value={caseForm.appointmentDate}
+                  onChange={(e) => setCaseForm((f) => ({ ...f, appointmentDate: e.target.value }))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Fathom Recording Link (optional)</label>
+                <input
+                  type="url"
+                  value={caseForm.fathomLink}
+                  onChange={(e) => setCaseForm((f) => ({ ...f, fathomLink: e.target.value }))}
+                  placeholder="https://fathom.video/..."
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Notes (optional)</label>
+                <textarea
+                  rows={3}
+                  value={caseForm.notes}
+                  onChange={(e) => setCaseForm((f) => ({ ...f, notes: e.target.value }))}
+                  placeholder="Key takeaways, action items..."
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-600">Attendees</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCaseForm((f) => ({ ...f, attendees: [...f.attendees, { name: '', role: '' }] }))
+                      setAttendeeSearch((prev) => [...prev, ''])
+                    }}
+                    className="flex items-center gap-1 text-xs text-[#415A77] hover:text-[#0D1B2A] font-medium"
+                  >
+                    <Plus size={11} /> Add row
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {caseForm.attendees.map((att, idx) => (
+                    <div key={idx} className="flex gap-2 items-start">
+                      <div className="flex-1 relative">
+                        <input
+                          value={attendeeSearch[idx] ?? att.name}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setAttendeeSearch((prev) => { const n = [...prev]; n[idx] = v; return n })
+                            setCaseForm((f) => {
+                              const a = [...f.attendees]
+                              a[idx] = { ...a[idx], name: v }
+                              return { ...f, attendees: a }
+                            })
+                          }}
+                          placeholder="Name"
+                          className={inputClass}
+                          list={`attendee-suggestions-${idx}`}
+                        />
+                        <datalist id={`attendee-suggestions-${idx}`}>
+                          {contacts
+                            .filter((c) => {
+                              const q = (attendeeSearch[idx] ?? '').toLowerCase()
+                              return !q || `${c.firstName} ${c.lastName}`.toLowerCase().includes(q)
+                            })
+                            .map((c) => (
+                              <option key={c.id} value={`${c.firstName} ${c.lastName}`} />
+                            ))}
+                        </datalist>
+                      </div>
+                      <input
+                        value={att.role}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setCaseForm((f) => {
+                            const a = [...f.attendees]
+                            a[idx] = { ...a[idx], role: v }
+                            return { ...f, attendees: a }
+                          })
+                        }}
+                        placeholder="Role (optional)"
+                        className={cn(inputClass, 'w-32')}
+                      />
+                      {caseForm.attendees.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCaseForm((f) => ({ ...f, attendees: f.attendees.filter((_, i) => i !== idx) }))
+                            setAttendeeSearch((prev) => prev.filter((_, i) => i !== idx))
+                          }}
+                          className="mt-1 rounded p-1 text-gray-300 hover:text-red-500 transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-gray-100 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCaseModal(false)}
+                  disabled={caseSaving}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={caseSaving || !caseForm.title || !caseForm.appointmentDate}
+                  className="rounded-lg bg-[#415A77] px-4 py-2 text-sm font-medium text-white hover:bg-[#0D1B2A] disabled:opacity-50 transition-colors"
+                >
+                  {caseSaving ? 'Saving…' : 'Save Case'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Edit Card modal */}
       {editCard && (

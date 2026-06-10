@@ -7,7 +7,7 @@ import {
   Search, Send, Sparkles, X, Trash2, Star,
   SlidersHorizontal, ArrowUpDown, Inbox as InboxIcon,
   ClipboardList, Phone, PanelRightClose, PanelRightOpen,
-  ExternalLink, User, GitBranch, SquarePen,
+  ExternalLink, User, GitBranch, SquarePen, Maximize2, Minimize2,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -208,6 +208,7 @@ export default function InboxPage() {
 
   // ── Compose modal ──────────────────────────────────────────────────────────
   const [showComposeModal, setShowComposeModal] = useState(false)
+  const [composeFullscreen, setComposeFullscreen] = useState(false)
   const [composeRecipient, setComposeRecipient] = useState<ComposeRecipient | null>(null)
   const [composeContactSearch, setComposeContactSearch] = useState('')
   const [composeContactResults, setComposeContactResults] = useState<{ id: string; firstName: string; lastName: string; email?: string | null; phone?: string | null }[]>([])
@@ -474,6 +475,17 @@ export default function InboxPage() {
     return () => clearTimeout(timer)
   }, [composeContactSearch, searchContacts])
 
+  // ── Escape key: close fullscreen compose ──────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setComposeFullscreen(false)
+    }
+    if (composeFullscreen) {
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [composeFullscreen])
+
   // ── Compose: send handler ──────────────────────────────────────────────────
 
   const handleComposeSend = async (e: React.FormEvent) => {
@@ -492,6 +504,7 @@ export default function InboxPage() {
     if (res.ok) {
       const data = res.ok ? await res.json() : {}
       setShowComposeModal(false)
+      setComposeFullscreen(false)
       setComposeRecipient(null)
       setComposeContactSearch('')
       setComposeBody('')
@@ -1036,141 +1049,294 @@ export default function InboxPage() {
       )}
 
       {/* ══ COMPOSE MODAL ═══════════════════════════════════════════ */}
-      {showComposeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => { setShowComposeModal(false); setComposeRecipient(null); setComposeContactSearch(''); setComposeContactResults([]) }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[500px] flex flex-col"
-            onClick={e => e.stopPropagation()}>
+      {showComposeModal && (() => {
+        const closeCompose = () => {
+          setShowComposeModal(false)
+          setComposeFullscreen(false)
+          setComposeRecipient(null)
+          setComposeContactSearch('')
+          setComposeContactResults([])
+        }
 
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <h3 className="font-semibold text-gray-900">New Message</h3>
-              <button onClick={() => { setShowComposeModal(false); setComposeRecipient(null); setComposeContactSearch(''); setComposeContactResults([]) }}
-                className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-
-            <form onSubmit={handleComposeSend} className="p-5 flex flex-col gap-4">
-
-              {/* To: contact search or raw address */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">To</label>
-                {composeRecipient ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-[#415A77] bg-blue-50 px-3 py-2">
-                    <span className="text-sm font-medium text-gray-900 flex-1">
-                      {composeRecipient.type === 'contact' ? composeRecipient.name : composeRecipient.address}
-                    </span>
-                    {composeRecipient.type === 'direct' && (
-                      <span className="text-[10px] font-semibold text-[#415A77] bg-blue-100 px-1.5 py-0.5 rounded">New</span>
-                    )}
-                    <button type="button" onClick={() => { setComposeRecipient(null); setComposeContactSearch('') }}
-                      className="text-gray-400 hover:text-red-500"><X size={13} /></button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <input
-                      autoFocus
-                      value={composeContactSearch}
-                      onChange={e => { setComposeContactSearch(e.target.value); setComposeSearchOpen(true) }}
-                      onFocus={() => setComposeSearchOpen(true)}
-                      placeholder="Search contacts, or type a phone number / email…"
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20"
-                    />
-                    {composeSearchOpen && (composeContactResults.length > 0 || composeContactSearch.trim().length > 2) && (
-                      <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden max-h-56 overflow-y-auto">
-                        {composeContactResults.map(c => (
-                          <button type="button" key={c.id}
-                            onClick={() => {
-                              setComposeRecipient({ type: 'contact', id: c.id, name: `${c.firstName} ${c.lastName}`.trim() || c.phone || c.email || 'Unknown', email: c.email, phone: c.phone })
-                              setComposeContactSearch('')
-                              setComposeContactResults([])
-                              setComposeSearchOpen(false)
-                              if (c.phone) setComposeChannel('SMS')
-                              else if (c.email) setComposeChannel('EMAIL')
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0">
-                            <div className="h-7 w-7 rounded-full bg-[#415A77] flex items-center justify-center text-[10px] font-bold text-white shrink-0">
-                              {(c.firstName[0] ?? '') + (c.lastName[0] ?? '')}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{c.firstName} {c.lastName}</p>
-                              <p className="text-xs text-gray-500 truncate">{c.phone ?? c.email ?? ''}</p>
-                            </div>
-                          </button>
-                        ))}
-                        {composeContactSearch.trim().length > 2 && (
-                          <button type="button"
-                            onClick={() => {
-                              const addr = composeContactSearch.trim()
-                              setComposeRecipient({ type: 'direct', address: addr })
-                              setComposeSearchOpen(false)
-                              setComposeContactSearch('')
-                              setComposeContactResults([])
-                              if (addr.includes('@')) setComposeChannel('EMAIL')
-                              else setComposeChannel('SMS')
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-indigo-50 border-t border-gray-100 bg-gray-50">
-                            <div className="h-7 w-7 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-                              <Send size={12} className="text-indigo-600" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900">Send to &ldquo;{composeContactSearch.trim()}&rdquo;</p>
-                              <p className="text-xs text-gray-500">Not in your contacts</p>
-                            </div>
-                          </button>
-                        )}
-                      </div>
+        // ── Shared recipient search block ──────────────────────────
+        const RecipientField = (
+          <div>
+            <label className="text-xs font-semibold text-[#778DA9] uppercase tracking-wide mb-1 block">To</label>
+            {composeRecipient ? (
+              <div className="flex items-center gap-2 rounded-lg border border-[#415A77] bg-[#415A77]/10 px-3 py-2">
+                <span className="text-sm font-medium text-gray-900 flex-1">
+                  {composeRecipient.type === 'contact' ? composeRecipient.name : composeRecipient.address}
+                </span>
+                {composeRecipient.type === 'direct' && (
+                  <span className="text-[10px] font-semibold text-[#415A77] bg-[#415A77]/20 px-1.5 py-0.5 rounded">New</span>
+                )}
+                <button type="button" onClick={() => { setComposeRecipient(null); setComposeContactSearch('') }}
+                  className="text-gray-400 hover:text-red-500"><X size={13} /></button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  autoFocus
+                  value={composeContactSearch}
+                  onChange={e => { setComposeContactSearch(e.target.value); setComposeSearchOpen(true) }}
+                  onFocus={() => setComposeSearchOpen(true)}
+                  placeholder="Search contacts, or type a phone number / email…"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20"
+                />
+                {composeSearchOpen && (composeContactResults.length > 0 || composeContactSearch.trim().length > 2) && (
+                  <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                    {composeContactResults.map(c => (
+                      <button type="button" key={c.id}
+                        onClick={() => {
+                          setComposeRecipient({ type: 'contact', id: c.id, name: `${c.firstName} ${c.lastName}`.trim() || c.phone || c.email || 'Unknown', email: c.email, phone: c.phone })
+                          setComposeContactSearch('')
+                          setComposeContactResults([])
+                          setComposeSearchOpen(false)
+                          if (c.phone) setComposeChannel('SMS')
+                          else if (c.email) setComposeChannel('EMAIL')
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                        <div className="h-7 w-7 rounded-full bg-[#415A77] flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                          {(c.firstName[0] ?? '') + (c.lastName[0] ?? '')}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{c.firstName} {c.lastName}</p>
+                          <p className="text-xs text-gray-500 truncate">{c.phone ?? c.email ?? ''}</p>
+                        </div>
+                      </button>
+                    ))}
+                    {composeContactSearch.trim().length > 2 && (
+                      <button type="button"
+                        onClick={() => {
+                          const addr = composeContactSearch.trim()
+                          setComposeRecipient({ type: 'direct', address: addr })
+                          setComposeSearchOpen(false)
+                          setComposeContactSearch('')
+                          setComposeContactResults([])
+                          if (addr.includes('@')) setComposeChannel('EMAIL')
+                          else setComposeChannel('SMS')
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-indigo-50 border-t border-gray-100 bg-gray-50">
+                        <div className="h-7 w-7 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                          <Send size={12} className="text-indigo-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900">Send to &ldquo;{composeContactSearch.trim()}&rdquo;</p>
+                          <p className="text-xs text-gray-500">Not in your contacts</p>
+                        </div>
+                      </button>
                     )}
                   </div>
                 )}
               </div>
-
-              {/* Channel selector */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Channel</label>
-                <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-                  {(['SMS', 'EMAIL'] as const).map(ch => (
-                    <button type="button" key={ch} onClick={() => setComposeChannel(ch)}
-                      className={`flex-1 py-2 text-sm font-medium transition-colors ${composeChannel === ch ? 'bg-[#0D1B2A] text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-                      {ch}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Subject (email only) */}
-              {composeChannel === 'EMAIL' && (
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Subject</label>
-                  <input value={composeSubject} onChange={e => setComposeSubject(e.target.value)}
-                    placeholder="Email subject…"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77]" />
-                </div>
-              )}
-
-              {/* Message */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Message</label>
-                <textarea required value={composeBody} onChange={e => setComposeBody(e.target.value)}
-                  rows={4} placeholder="Write your message…"
-                  className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20" />
-              </div>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-2 pt-1">
-                <button type="button"
-                  onClick={() => { setShowComposeModal(false); setComposeRecipient(null); setComposeContactSearch(''); setComposeContactResults([]) }}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                  Cancel
-                </button>
-                <button type="submit" disabled={!composeRecipient || !composeBody.trim() || composeSending}
-                  className="rounded-lg bg-[#0D1B2A] px-4 py-2 text-sm font-medium text-white hover:bg-[#1B263B] disabled:opacity-40">
-                  {composeSending ? 'Sending…' : `Send ${composeChannel}`}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
-        </div>
-      )}
+        )
+
+        // ── Fullscreen layout ──────────────────────────────────────
+        if (composeFullscreen) {
+          if (composeChannel === 'SMS') {
+            return (
+              <div className="fixed inset-0 z-50 flex flex-col bg-[#0D1B2A]">
+                {/* SMS fullscreen header */}
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 shrink-0">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <MessageSquare size={16} className="text-[#778DA9] shrink-0" />
+                    <span className="text-sm font-semibold text-white">New SMS</span>
+                    {composeRecipient && (
+                      <span className="text-sm text-[#778DA9] truncate">
+                        — {composeRecipient.type === 'contact' ? composeRecipient.name : composeRecipient.address}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => setComposeFullscreen(false)} title="Minimize (Esc)"
+                      className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-[#778DA9] hover:text-white hover:border-white/30 transition-colors">
+                      <Minimize2 size={13} />
+                      <span>Minimize</span>
+                    </button>
+                    <button onClick={closeCompose} title="Close"
+                      className="p-1.5 rounded-lg text-[#778DA9] hover:text-white hover:bg-white/10 transition-colors">
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* To field */}
+                <div className="px-5 py-3 border-b border-white/10 shrink-0">
+                  <div className="[&_label]:text-[#778DA9] [&_input]:bg-white/5 [&_input]:border-white/10 [&_input]:text-white [&_input::placeholder]:text-white/30 [&_input:focus]:border-[#415A77]">
+                    {RecipientField}
+                  </div>
+                </div>
+
+                {/* Message bubbles area — empty state in fullscreen */}
+                <div className="flex-1 overflow-y-auto px-5 py-6 min-h-0">
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-[#778DA9]/50">
+                    <MessageSquare size={32} className="opacity-30" />
+                    <p className="text-sm">Compose a new message below</p>
+                  </div>
+                </div>
+
+                {/* Composer */}
+                <form onSubmit={handleComposeSend} className="border-t border-white/10 px-5 py-4 shrink-0">
+                  <div className="flex items-end gap-3">
+                    <textarea
+                      value={composeBody}
+                      onChange={e => setComposeBody(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleComposeSend(e as any) }}
+                      rows={3}
+                      placeholder="Type a message… (⌘+Enter to send)"
+                      className="flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/40"
+                    />
+                    <button type="submit"
+                      disabled={!composeRecipient || !composeBody.trim() || composeSending}
+                      className="flex items-center gap-2 rounded-xl bg-[#415A77] px-5 py-3 text-sm font-semibold text-white hover:bg-[#4f6d8f] disabled:opacity-40 transition-colors shrink-0">
+                      <Send size={14} />
+                      {composeSending ? 'Sending…' : 'Send'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )
+          }
+
+          // Email fullscreen
+          return (
+            <div className="fixed inset-0 z-50 flex flex-col bg-white">
+              {/* Email fullscreen header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 bg-[#0D1B2A] shrink-0">
+                <div className="flex items-center gap-2">
+                  <Mail size={16} className="text-[#778DA9]" />
+                  <span className="text-sm font-semibold text-white">New Email</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setComposeFullscreen(false)} title="Minimize (Esc)"
+                    className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-[#778DA9] hover:text-white hover:border-white/30 transition-colors">
+                    <Minimize2 size={13} />
+                    <span>Minimize</span>
+                  </button>
+                  <button onClick={closeCompose} title="Close"
+                    className="p-1.5 rounded-lg text-[#778DA9] hover:text-white hover:bg-white/10 transition-colors">
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Email fields */}
+              <form onSubmit={handleComposeSend} className="flex flex-col flex-1 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 space-y-3 shrink-0">
+                  {RecipientField}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Subject</label>
+                    <input
+                      value={composeSubject}
+                      onChange={e => setComposeSubject(e.target.value)}
+                      placeholder="Email subject…"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20"
+                    />
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 min-h-0 px-6 pt-4 pb-2 flex flex-col">
+                  <textarea
+                    required
+                    value={composeBody}
+                    onChange={e => setComposeBody(e.target.value)}
+                    placeholder="Write your message…"
+                    className="flex-1 resize-none w-full border-0 outline-none text-sm text-gray-900 placeholder:text-gray-300 leading-relaxed"
+                  />
+                </div>
+
+                {/* Footer actions */}
+                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0">
+                  <button type="button" onClick={closeCompose}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">
+                    Discard
+                  </button>
+                  <button type="submit" disabled={!composeRecipient || !composeBody.trim() || composeSending}
+                    className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1B263B] disabled:opacity-40 transition-colors">
+                    <Send size={14} />
+                    {composeSending ? 'Sending…' : 'Send Email'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )
+        }
+
+        // ── Normal (compact) modal ─────────────────────────────────
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={closeCompose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-[500px] flex flex-col"
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                <h3 className="font-semibold text-gray-900">New Message</h3>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setComposeFullscreen(true)} title="Expand to full screen"
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-[#415A77] hover:bg-gray-100 transition-colors">
+                    <Maximize2 size={15} />
+                  </button>
+                  <button onClick={closeCompose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleComposeSend} className="p-5 flex flex-col gap-4">
+
+                {RecipientField}
+
+                {/* Channel selector */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Channel</label>
+                  <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                    {(['SMS', 'EMAIL'] as const).map(ch => (
+                      <button type="button" key={ch} onClick={() => setComposeChannel(ch)}
+                        className={`flex-1 py-2 text-sm font-medium transition-colors ${composeChannel === ch ? 'bg-[#0D1B2A] text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                        {ch}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Subject (email only) */}
+                {composeChannel === 'EMAIL' && (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Subject</label>
+                    <input value={composeSubject} onChange={e => setComposeSubject(e.target.value)}
+                      placeholder="Email subject…"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77]" />
+                  </div>
+                )}
+
+                {/* Message */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Message</label>
+                  <textarea required value={composeBody} onChange={e => setComposeBody(e.target.value)}
+                    rows={4} placeholder="Write your message…"
+                    className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20" />
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2 pt-1">
+                  <button type="button" onClick={closeCompose}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={!composeRecipient || !composeBody.trim() || composeSending}
+                    className="rounded-lg bg-[#0D1B2A] px-4 py-2 text-sm font-medium text-white hover:bg-[#1B263B] disabled:opacity-40">
+                    {composeSending ? 'Sending…' : `Send ${composeChannel}`}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ══ SAVE AS CONTACT MODAL ═══════════════════════════════════════════ */}
       {showSaveContactModal && (

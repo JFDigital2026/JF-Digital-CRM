@@ -271,16 +271,42 @@ model Company {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  contacts        Contact[]
-  opportunities   Opportunity[]
-  orders          Order[]
-  subscriptions   Subscription[]
-  tasks           Task[]
-  fileAttachments FileAttachment[]
-  activityLogs    ActivityLog[]
+  contacts          Contact[]
+  opportunities     Opportunity[]
+  orders            Order[]
+  subscriptions     Subscription[]
+  tasks             Task[]
+  fileAttachments   FileAttachment[]
+  activityLogs      ActivityLog[]
+  appointmentCases  AppointmentCase[]
 
   @@index([name])
   @@index([createdAt])
+}
+
+model AppointmentCase {
+  id              String    @id @default(cuid())
+  companyId       String
+  title           String
+  appointmentDate DateTime
+  fathomLink      String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  attendees       AppointmentAttendee[]
+
+  @@index([companyId])
+}
+
+model AppointmentAttendee {
+  id      String          @id @default(cuid())
+  caseId  String
+  name    String
+  role    String?
+  case    AppointmentCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
 }
 
 model Contact {

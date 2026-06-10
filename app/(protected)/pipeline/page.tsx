@@ -847,7 +847,7 @@ export default function PipelinePage() {
       <Modal
         open={!!outcomeTarget}
         onClose={() => setOutcomeTarget(null)}
-        title={outcomeTarget?.type === 'WON' ? '🏆 Mark as Won' : outcomeTarget?.type === 'ABANDONED' ? '📦 Mark as Abandoned' : '❌ Mark as Lost'}
+        title={outcomeTarget?.type === 'WON' ? 'Mark as Won' : outcomeTarget?.type === 'ABANDONED' ? 'Mark as Abandoned' : 'Mark as Lost'}
         size="sm"
       >
         <div className="flex flex-col gap-4">
