@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
@@ -13,7 +13,7 @@ interface Product {
   type: string
 }
 
-export default function PaySuccessPage() {
+function PaySuccessPageInner() {
   const params = useParams<{ productId: string }>()
   const searchParams = useSearchParams()
   const [product, setProduct] = useState<Product | null>(null)
@@ -60,5 +60,13 @@ export default function PaySuccessPage() {
         <p className="text-xs text-gray-400">Need help? Reply to your receipt email.</p>
       </div>
     </div>
+  )
+}
+
+export default function PaySuccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <PaySuccessPageInner />
+    </Suspense>
   )
 }

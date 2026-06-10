@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Orbitron } from 'next/font/google'
 import { loadStripe } from '@stripe/stripe-js'
@@ -266,7 +266,7 @@ function CardForm({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function AddCardPage({ params }: { params: { companyId: string } }) {
+function AddCardPageInner({ params }: { params: { companyId: string } }) {
   const searchParams = useSearchParams()
   const companyName  = searchParams.get('name') ?? ''
 
@@ -367,5 +367,13 @@ export default function AddCardPage({ params }: { params: { companyId: string } 
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AddCardPage({ params }: { params: { companyId: string } }) {
+  return (
+    <Suspense fallback={null}>
+      <AddCardPageInner params={params} />
+    </Suspense>
   )
 }

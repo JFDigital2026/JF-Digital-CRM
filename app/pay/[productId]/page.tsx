@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
@@ -24,7 +24,7 @@ function formatPrice(amount: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
 }
 
-export default function PayPage() {
+function PayPageInner() {
   const params = useParams<{ productId: string }>()
   const searchParams = useSearchParams()
 
@@ -254,5 +254,13 @@ export default function PayPage() {
         <p className="text-center text-xs text-gray-400">Secured by Stripe · Your payment info is never stored on our servers.</p>
       </div>
     </div>
+  )
+}
+
+export default function PayPage() {
+  return (
+    <Suspense fallback={null}>
+      <PayPageInner />
+    </Suspense>
   )
 }

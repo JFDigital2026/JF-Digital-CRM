@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, ExternalLink, Users, Briefcase, Trash2,
@@ -257,7 +257,7 @@ function CardMenu({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function CompanyDetailPage({ params }: { params: { id: string } }) {
+function CompanyDetailPageInner({ params }: { params: { id: string } }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [company, setCompany] = useState<Company | null>(null)
@@ -1610,5 +1610,13 @@ export default function CompanyDetailPage({ params }: { params: { id: string } }
         </div>
       )}
     </div>
+  )
+}
+
+export default function CompanyDetailPage({ params }: { params: { id: string } }) {
+  return (
+    <Suspense fallback={null}>
+      <CompanyDetailPageInner params={params} />
+    </Suspense>
   )
 }

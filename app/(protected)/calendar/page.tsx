@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -536,7 +536,7 @@ function MonthView({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function CalendarPage() {
+function CalendarPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -1485,5 +1485,13 @@ export default function CalendarPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={null}>
+      <CalendarPageInner />
+    </Suspense>
   )
 }

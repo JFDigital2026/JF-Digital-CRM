@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { FlowDiagram } from '@/components/automations/flow-diagram'
 import { CopyEditorSlideOver } from '@/components/automations/copy-editor-slideover'
@@ -54,7 +54,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
   )
 }
 
-export default function AutomationDetailPage() {
+function AutomationDetailPageInner() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const searchParams = useSearchParams()
@@ -247,5 +247,13 @@ export default function AutomationDetailPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function AutomationDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <AutomationDetailPageInner />
+    </Suspense>
   )
 }
