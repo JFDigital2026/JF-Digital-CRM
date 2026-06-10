@@ -8,6 +8,7 @@ import {
   SlidersHorizontal, ArrowUpDown, Inbox as InboxIcon,
   ClipboardList, Phone, PanelRightClose, PanelRightOpen,
   ExternalLink, User, GitBranch, SquarePen, Maximize2, Minimize2,
+  Paperclip, FileText, PenLine,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -215,6 +216,10 @@ export default function InboxPage() {
   const [composeChannel, setComposeChannel] = useState<'SMS' | 'EMAIL'>('SMS')
   const [composeSubject, setComposeSubject] = useState('')
   const [composeBody, setComposeBody] = useState('')
+  const [composeCc, setComposeCc] = useState('')
+  const [composeBcc, setComposeBcc] = useState('')
+  const [showComposeCc, setShowComposeCc] = useState(false)
+  const [showComposeBcc, setShowComposeBcc] = useState(false)
   const [composeSending, setComposeSending] = useState(false)
   const [composeSearchOpen, setComposeSearchOpen] = useState(false)
 
@@ -509,6 +514,10 @@ export default function InboxPage() {
       setComposeContactSearch('')
       setComposeBody('')
       setComposeSubject('')
+      setComposeCc('')
+      setComposeBcc('')
+      setShowComposeCc(false)
+      setShowComposeBcc(false)
       setComposeChannel('SMS')
       fetchConversations()
       showToast('Message sent')
@@ -1056,6 +1065,12 @@ export default function InboxPage() {
           setComposeRecipient(null)
           setComposeContactSearch('')
           setComposeContactResults([])
+          setComposeBody('')
+          setComposeSubject('')
+          setComposeCc('')
+          setComposeBcc('')
+          setShowComposeCc(false)
+          setShowComposeBcc(false)
         }
 
         // ── Shared recipient search block ──────────────────────────
@@ -1137,9 +1152,9 @@ export default function InboxPage() {
         if (composeFullscreen) {
           if (composeChannel === 'SMS') {
             return (
-              <div className="fixed inset-0 z-50 flex flex-col bg-[#0D1B2A]">
+              <div className="fixed inset-0 z-50 flex flex-col bg-white">
                 {/* SMS fullscreen header */}
-                <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 shrink-0">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 bg-[#0D1B2A] shrink-0">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <MessageSquare size={16} className="text-[#778DA9] shrink-0" />
                     <span className="text-sm font-semibold text-white">New SMS</span>
@@ -1163,14 +1178,12 @@ export default function InboxPage() {
                 </div>
 
                 {/* To field */}
-                <div className="px-5 py-3 border-b border-white/10 shrink-0">
-                  <div className="[&_label]:text-[#778DA9] [&_input]:bg-white/5 [&_input]:border-white/10 [&_input]:text-white [&_input::placeholder]:text-white/30 [&_input:focus]:border-[#415A77]">
-                    {RecipientField}
-                  </div>
+                <div className="px-5 py-3 border-b border-gray-200 shrink-0">
+                  {RecipientField}
                 </div>
 
-                {/* Message bubbles area — empty state in fullscreen */}
-                <div className="flex-1 overflow-y-auto px-5 py-6 min-h-0">
+                {/* Message area — empty state */}
+                <div className="flex-1 overflow-y-auto px-5 py-6 min-h-0 bg-gray-50/50">
                   <div className="flex flex-col items-center justify-center h-full gap-2 text-[#778DA9]/50">
                     <MessageSquare size={32} className="opacity-30" />
                     <p className="text-sm">Compose a new message below</p>
@@ -1178,7 +1191,7 @@ export default function InboxPage() {
                 </div>
 
                 {/* Composer */}
-                <form onSubmit={handleComposeSend} className="border-t border-white/10 px-5 py-4 shrink-0">
+                <form onSubmit={handleComposeSend} className="border-t border-gray-200 px-5 py-4 bg-white shrink-0">
                   <div className="flex items-end gap-3">
                     <textarea
                       value={composeBody}
@@ -1186,7 +1199,7 @@ export default function InboxPage() {
                       onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleComposeSend(e as any) }}
                       rows={3}
                       placeholder="Type a message… (⌘+Enter to send)"
-                      className="flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/40"
+                      className="flex-1 resize-none rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-[#0D1B2A] placeholder:text-gray-300 outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20"
                     />
                     <button type="submit"
                       disabled={!composeRecipient || !composeBody.trim() || composeSending}
@@ -1225,7 +1238,60 @@ export default function InboxPage() {
               {/* Email fields */}
               <form onSubmit={handleComposeSend} className="flex flex-col flex-1 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-200 space-y-3 shrink-0">
-                  {RecipientField}
+                  {/* To row with Cc/Bcc toggles */}
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">{RecipientField}</div>
+                    <div className="flex items-center gap-1 pt-1 shrink-0">
+                      {!showComposeCc && (
+                        <button type="button" onClick={() => setShowComposeCc(true)}
+                          className="text-xs font-medium text-[#778DA9] hover:text-[#415A77] px-1.5 py-0.5 rounded transition-colors">
+                          Cc
+                        </button>
+                      )}
+                      {!showComposeBcc && (
+                        <button type="button" onClick={() => setShowComposeBcc(true)}
+                          className="text-xs font-medium text-[#778DA9] hover:text-[#415A77] px-1.5 py-0.5 rounded transition-colors">
+                          Bcc
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cc */}
+                  {showComposeCc && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide w-8 shrink-0">Cc</label>
+                      <input
+                        value={composeCc}
+                        onChange={e => setComposeCc(e.target.value)}
+                        placeholder="cc@example.com"
+                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20"
+                      />
+                      <button type="button" onClick={() => { setShowComposeCc(false); setComposeCc('') }}
+                        className="p-1 rounded text-gray-300 hover:text-gray-500 transition-colors shrink-0">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Bcc */}
+                  {showComposeBcc && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide w-8 shrink-0">Bcc</label>
+                      <input
+                        value={composeBcc}
+                        onChange={e => setComposeBcc(e.target.value)}
+                        placeholder="bcc@example.com"
+                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#415A77] focus:ring-1 focus:ring-[#415A77]/20"
+                      />
+                      <button type="button" onClick={() => { setShowComposeBcc(false); setComposeBcc('') }}
+                        className="p-1 rounded text-gray-300 hover:text-gray-500 transition-colors shrink-0">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Subject */}
                   <div>
                     <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Subject</label>
                     <input
@@ -1250,15 +1316,34 @@ export default function InboxPage() {
 
                 {/* Footer actions */}
                 <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0">
-                  <button type="button" onClick={closeCompose}
-                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">
-                    Discard
-                  </button>
-                  <button type="submit" disabled={!composeRecipient || !composeBody.trim() || composeSending}
-                    className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1B263B] disabled:opacity-40 transition-colors">
-                    <Send size={14} />
-                    {composeSending ? 'Sending…' : 'Send Email'}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button type="button" title="Insert attachment"
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-500 hover:text-[#415A77] hover:bg-gray-100 transition-colors">
+                      <Paperclip size={13} />
+                      Insert
+                    </button>
+                    <button type="button" title="Use a template"
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-500 hover:text-[#415A77] hover:bg-gray-100 transition-colors">
+                      <FileText size={13} />
+                      Template
+                    </button>
+                    <button type="button" title="Add signature"
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-500 hover:text-[#415A77] hover:bg-gray-100 transition-colors">
+                      <PenLine size={13} />
+                      Signature
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={closeCompose}
+                      className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">
+                      Discard
+                    </button>
+                    <button type="submit" disabled={!composeRecipient || !composeBody.trim() || composeSending}
+                      className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1B263B] disabled:opacity-40 transition-colors">
+                      <Send size={14} />
+                      {composeSending ? 'Sending…' : 'Send Email'}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
