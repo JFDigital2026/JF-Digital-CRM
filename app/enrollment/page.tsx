@@ -56,10 +56,23 @@ type ServiceLine = {
   amount: string
   chargeType: 'deposit' | 'on_completion' | 'recurring'
   durationMonths: number | null
+  baseFee?: number
 }
 
 function newLine(): ServiceLine {
   return { uid: Math.random().toString(36).slice(2), productId: '', amount: '', chargeType: 'deposit', durationMonths: null }
+}
+
+function calcTiers(base: number) {
+  return {
+    price6:  base,
+    price12: parseFloat((base * 0.85).toFixed(2)),
+    price18: parseFloat((base * 0.75).toFixed(2)),
+  }
+}
+
+function fmtMoney(n: number) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
 const CHARGE_TYPES: { value: ServiceLine['chargeType']; label: string; short: string }[] = [
@@ -96,6 +109,11 @@ function EnrollmentForm() {
   const [services,  setServices]  = useState<ServiceLine[]>([])
   const [products,  setProducts]  = useState<Product[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Setup modal
+  const [showSetup,     setShowSetup]     = useState(false)
+  const [setupProductId, setSetupProductId] = useState('')
+  const [setupBaseFee,  setSetupBaseFee]  = useState('')
 
   useEffect(() => {
     fetch('/api/products')
@@ -338,33 +356,223 @@ function EnrollmentForm() {
         <div>
           <div className="mb-2.5 flex items-center justify-between">
             <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Services</p>
-            <button
-              type="button"
-              onClick={addService}
-              className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-70 hover:opacity-100 transition-opacity"
-            >
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              Add
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Setup button */}
+              <button
+                type="button"
+                onClick={() => setShowSetup(true)}
+                className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-70 hover:opacity-100 transition-opacity"
+                title="Configure retainer pricing"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Setup
+              </button>
+              {/* Add one-off line */}
+              <button
+                type="button"
+                onClick={addService}
+                className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-70 hover:opacity-100 transition-opacity"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                Add
+              </button>
+            </div>
           </div>
 
+          {/* ── Setup modal ── */}
+          {showSetup && (() => {
+            const base = parseFloat(setupBaseFee) || 0
+            const tiers = base > 0 ? calcTiers(base) : null
+            const setupProduct = products.find((p) => p.id === setupProductId) ?? null
+
+            function applySetup() {
+              if (!setupProductId || !tiers) return
+              const existingIdx = services.findIndex((s) => s.chargeType === 'recurring' && s.productId === setupProductId)
+              const line: ServiceLine = {
+                uid: existingIdx >= 0 ? services[existingIdx].uid : Math.random().toString(36).slice(2),
+                productId: setupProductId,
+                chargeType: 'recurring',
+                durationMonths: 18,
+                amount: String(tiers.price18),
+                baseFee: base,
+              }
+              if (existingIdx >= 0) {
+                setServices((prev) => prev.map((s, i) => i === existingIdx ? line : s))
+              } else {
+                setServices((prev) => [...prev, line])
+              }
+              setShowSetup(false)
+            }
+
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowSetup(false)}>
+                <div className="bg-white rounded-2xl shadow-2xl w-[480px] p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="text-sm font-bold text-[#0D1B2A]">Retainer Pricing Setup</h3>
+                    <button type="button" onClick={() => setShowSetup(false)} className="text-[#8a9bb0] hover:text-[#415A77]">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Product */}
+                  <div className="mb-4">
+                    <label className={lblCls}>Product / Service</label>
+                    <select
+                      value={setupProductId}
+                      onChange={(e) => setSetupProductId(e.target.value)}
+                      className={fieldCls}
+                    >
+                      <option value="">— Select product —</option>
+                      {products.filter((p) => p.type === 'SUBSCRIPTION').map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Base fee */}
+                  <div className="mb-5">
+                    <label className={lblCls}>Base Monthly Fee</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={setupBaseFee}
+                        onChange={(e) => setSetupBaseFee(e.target.value)}
+                        placeholder="0.00"
+                        className={fieldCls + ' pl-6'}
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#8a9bb0] mt-1">6 mo = base · 12 mo = 15% off · 18 mo = 25% off</p>
+                  </div>
+
+                  {/* Tier preview */}
+                  {tiers && (
+                    <div className="rounded-xl border border-[#415A77]/15 overflow-hidden mb-5">
+                      {([
+                        { months: 6,  label: '6 Months',  price: tiers.price6,  discount: null },
+                        { months: 12, label: '12 Months', price: tiers.price12, discount: 15 },
+                        { months: 18, label: '18 Months', price: tiers.price18, discount: 25 },
+                      ] as const).map((tier, i) => (
+                        <div key={tier.months} className={`flex items-center justify-between px-4 py-3 ${i > 0 ? 'border-t border-[#415A77]/10' : ''} ${tier.months === 18 ? 'bg-[#415A77]/5' : ''}`}>
+                          <div>
+                            <span className="text-sm font-semibold text-[#0D1B2A]">{tier.label}</span>
+                            {tier.discount && (
+                              <span className="ml-2 text-[10px] font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">{tier.discount}% off</span>
+                            )}
+                            {tier.months === 18 && (
+                              <span className="ml-1 text-[10px] font-semibold text-[#415A77] bg-[#415A77]/10 rounded px-1.5 py-0.5">Default</span>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-[#0D1B2A]">${fmtMoney(tier.price)}<span className="text-xs font-normal text-[#8a9bb0]">/mo</span></p>
+                            <p className="text-[11px] text-[#8a9bb0]">${fmtMoney(tier.price * tier.months)} total</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={!setupProductId || !tiers}
+                    onClick={applySetup}
+                    className="w-full bg-[#415A77] hover:bg-[#0D1B2A] text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Apply to Enrollment
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
+
           {services.length === 0 ? (
-            <p className="text-xs text-[#8a9bb0]">No services — enrollment saves payment on file only.</p>
+            <p className="text-xs text-[#8a9bb0]">No services — use Setup to configure retainer pricing, or Add for one-off charges.</p>
           ) : (
             <div className="overflow-hidden rounded-xl border border-[#415A77]/15 bg-white/40 divide-y divide-[#415A77]/10">
               {services.map((svc) => {
                 const selectedProduct = products.find((p) => p.id === svc.productId) ?? null
-                const DURATIONS: { months: number; label: string; price: number | null | undefined }[] = [
-                  { months: 6,  label: '6 mo',  price: selectedProduct?.price6Month },
-                  { months: 12, label: '12 mo', price: selectedProduct?.price12Month },
-                  { months: 18, label: '18 mo', price: selectedProduct?.price18Month },
-                ]
+
+                // ── Recurring line configured via setup — clean display ──────
+                if (svc.chargeType === 'recurring' && svc.baseFee != null) {
+                  const tiers = calcTiers(svc.baseFee)
+                  const RDUR = [
+                    { months: 6  as const, label: '6 mo',  price: tiers.price6,  discount: null },
+                    { months: 12 as const, label: '12 mo', price: tiers.price12, discount: 15 },
+                    { months: 18 as const, label: '18 mo', price: tiers.price18, discount: 25 },
+                  ]
+                  const activeTier = RDUR.find((d) => d.months === svc.durationMonths) ?? RDUR[2]
+                  const monthlyPrice = activeTier.price
+                  const totalPrice  = monthlyPrice * activeTier.months
+
+                  return (
+                    <div key={svc.uid} className="px-4 py-4">
+                      {/* Product name + remove */}
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-semibold text-[#0D1B2A]">
+                          {selectedProduct?.name ?? 'Monthly Retainer'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setShowSetup(true)}
+                            className="text-[#8a9bb0] hover:text-[#415A77] transition-colors" title="Edit setup">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </button>
+                          <button type="button" onClick={() => removeService(svc.uid)}
+                            className="text-[#8a9bb0] hover:text-red-400 transition-colors">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Duration toggle */}
+                      <div className="flex rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden mb-3 w-fit">
+                        {RDUR.map((d) => (
+                          <button
+                            key={d.months}
+                            type="button"
+                            onClick={() => updateService(svc.uid, { durationMonths: d.months, amount: String(d.price) })}
+                            className={
+                              svc.durationMonths === d.months
+                                ? 'px-3.5 py-1.5 text-[11px] font-semibold bg-[#415A77] text-white transition-colors'
+                                : 'px-3.5 py-1.5 text-[11px] font-medium text-[#5a6a7e] hover:bg-[#415A77]/5 transition-colors'
+                            }
+                          >
+                            {d.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Price display */}
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold text-[#0D1B2A]">${fmtMoney(monthlyPrice)}</span>
+                        <span className="text-sm text-[#8a9bb0]">/mo</span>
+                        <span className="text-sm text-[#5a6a7e]">·</span>
+                        <span className="text-sm font-medium text-[#5a6a7e]">${fmtMoney(totalPrice)} total</span>
+                        {activeTier.discount && (
+                          <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">{activeTier.discount}% off</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                // ── Standard editable line (deposit / on-completion / manual recurring) ──
                 return (
                   <div key={svc.uid} className="flex flex-col px-4 py-3 gap-2">
                     <div className="flex items-center gap-3">
-                      {/* Product */}
                       <select
                         value={svc.productId}
                         onChange={(e) => {
@@ -374,7 +582,7 @@ function EnrollmentForm() {
                             productId: e.target.value,
                             amount: p ? String(p.price) : svc.amount,
                             chargeType: isSubscription ? 'recurring' : svc.chargeType,
-                            durationMonths: isSubscription ? 12 : svc.durationMonths,
+                            durationMonths: isSubscription ? 18 : svc.durationMonths,
                           })
                         }}
                         className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[#0D1B2A] outline-none cursor-pointer truncate"
@@ -385,13 +593,10 @@ function EnrollmentForm() {
                         ))}
                       </select>
 
-                      {/* Amount */}
                       <div className="flex items-center gap-0.5 shrink-0">
                         <span className="text-sm text-[#8a9bb0]">$</span>
                         <input
-                          type="number"
-                          min="0"
-                          step="0.01"
+                          type="number" min="0" step="0.01"
                           value={svc.amount}
                           onChange={(e) => updateService(svc.uid, { amount: e.target.value })}
                           className="w-20 bg-transparent text-sm font-semibold text-[#0D1B2A] outline-none text-right"
@@ -399,13 +604,12 @@ function EnrollmentForm() {
                         />
                       </div>
 
-                      {/* Charge type pills */}
                       <div className="flex shrink-0 rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden">
                         {CHARGE_TYPES.map((ct) => (
                           <button
                             key={ct.value}
                             type="button"
-                            onClick={() => updateService(svc.uid, { chargeType: ct.value, durationMonths: ct.value !== 'recurring' ? null : svc.durationMonths })}
+                            onClick={() => updateService(svc.uid, { chargeType: ct.value, durationMonths: ct.value !== 'recurring' ? null : (svc.durationMonths ?? 18) })}
                             className={
                               svc.chargeType === ct.value
                                 ? 'px-2.5 py-1 text-[10px] font-semibold bg-[#415A77] text-white transition-colors'
@@ -417,60 +621,13 @@ function EnrollmentForm() {
                         ))}
                       </div>
 
-                      {/* Remove */}
-                      <button
-                        type="button"
-                        onClick={() => removeService(svc.uid)}
-                        className="shrink-0 text-[#8a9bb0] hover:text-red-400 transition-colors"
-                      >
+                      <button type="button" onClick={() => removeService(svc.uid)}
+                        className="shrink-0 text-[#8a9bb0] hover:text-red-400 transition-colors">
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
                     </div>
-
-                    {/* Duration selector — shown when recurring */}
-                    {svc.chargeType === 'recurring' && (
-                      <div className="flex items-center gap-2 pl-1">
-                        <span className="text-[10px] font-semibold tracking-widest text-[#5a6a7e] uppercase">Duration</span>
-                        <div className="flex rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden">
-                          {DURATIONS.map((d) => {
-                            const active = svc.durationMonths === d.months
-                            const totalValue = d.price != null
-                              ? `$${(d.price * d.months).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} total`
-                              : null
-                            return (
-                              <button
-                                key={d.months}
-                                type="button"
-                                onClick={() => {
-                                  updateService(svc.uid, {
-                                    durationMonths: d.months,
-                                    amount: d.price != null ? String(d.price) : svc.amount,
-                                  })
-                                }}
-                                className={
-                                  active
-                                    ? 'px-3 py-1 text-[10px] font-semibold bg-[#415A77] text-white transition-colors'
-                                    : 'px-3 py-1 text-[10px] font-medium text-[#5a6a7e] hover:bg-[#415A77]/5 transition-colors'
-                                }
-                              >
-                                {d.label}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {(() => {
-                          const active = DURATIONS.find((d) => d.months === svc.durationMonths)
-                          const tv = active?.price != null
-                            ? `$${(active.price * active.months).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} total`
-                            : null
-                          return tv ? (
-                            <span className="text-[10px] text-[#415A77] font-medium">{tv}</span>
-                          ) : null
-                        })()}
-                      </div>
-                    )}
                   </div>
                 )
               })}

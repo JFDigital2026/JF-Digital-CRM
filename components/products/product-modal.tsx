@@ -433,15 +433,38 @@ export function ProductModal({ open, onClose, product, onSaved }: ProductModalPr
 
                   {/* Retainer Duration Pricing */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Retainer Duration Pricing <span className="text-gray-400 font-normal">(optional — overrides base price per duration)</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Retainer Duration Pricing
                     </label>
+                    {/* Base fee → auto-calc */}
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-500 mb-1">Base Monthly Fee <span className="text-gray-400">(auto-calculates tiers)</span></p>
+                      <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#0D1B2A]/20 max-w-[160px]">
+                        <span className="px-2 py-2 text-xs text-gray-400 bg-gray-50 border-r border-gray-200">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          className="flex-1 px-2 py-2 text-sm focus:outline-none min-w-0"
+                          onChange={(e) => {
+                            const base = parseFloat(e.target.value) || 0
+                            if (base > 0) {
+                              set('price6Month',  parseFloat((base * 1.00).toFixed(2)))
+                              set('price12Month', parseFloat((base * 0.85).toFixed(2)))
+                              set('price18Month', parseFloat((base * 0.75).toFixed(2)))
+                            }
+                          }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1">6 mo = base · 12 mo = 15% off · 18 mo = 25% off</p>
+                    </div>
                     <div className="grid grid-cols-3 gap-3">
                       {([
-                        { label: '6 months', field: 'price6Month' as const },
-                        { label: '12 months', field: 'price12Month' as const },
-                        { label: '18 months', field: 'price18Month' as const },
-                      ]).map(({ label, field }) => (
+                        { label: '6 months', field: 'price6Month' as const, months: 6 },
+                        { label: '12 months', field: 'price12Month' as const, months: 12 },
+                        { label: '18 months', field: 'price18Month' as const, months: 18 },
+                      ]).map(({ label, field, months }) => (
                         <div key={field}>
                           <p className="text-xs text-gray-500 mb-1">{label}</p>
                           <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#0D1B2A]/20">
@@ -458,7 +481,7 @@ export function ProductModal({ open, onClose, product, onSaved }: ProductModalPr
                           </div>
                           {form[field] && (
                             <p className="text-xs text-gray-400 mt-0.5">
-                              ${(form[field]! * (field === 'price6Month' ? 6 : field === 'price12Month' ? 12 : 18)).toLocaleString()} total
+                              ${(form[field]! * months).toLocaleString()} total
                             </p>
                           )}
                         </div>
