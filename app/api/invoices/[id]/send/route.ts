@@ -6,9 +6,8 @@ import { Resend } from 'resend'
 import { formatPrice } from '@/lib/stripe'
 import { format } from 'date-fns'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  const resend = new Resend(process.env.RESEND_API_KEY)
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
