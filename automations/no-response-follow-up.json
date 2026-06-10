@@ -1,0 +1,97 @@
+{
+  "name": "No Response Follow-Up Sequence",
+  "description": "3-touch cold outreach sequence for contacts who haven't replied",
+  "trigger": "CONTACT_CREATED",
+  "triggerConfig": {
+    "source": "cold-outreach"
+  },
+  "conditions": [
+    {
+      "field": "leadStatus",
+      "operator": "equals",
+      "value": "NEW"
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "EMAIL",
+      "label": "Initial Outreach Email",
+      "config": {
+        "subject": "Quick question for {{contact.firstName}}",
+        "body": "Hey {{contact.firstName}},\n\nI came across your work and had a quick question about how you're currently handling [pain point].\n\nWould you be open to a 15-minute call this week?\n\nBest,\n{{user.name}}"
+      }
+    },
+    {
+      "id": "step-2",
+      "type": "WAIT",
+      "label": "Wait 3 business days",
+      "config": {
+        "duration": 3,
+        "unit": "business_days"
+      }
+    },
+    {
+      "id": "step-3",
+      "type": "BRANCH",
+      "label": "Did they respond?",
+      "config": {
+        "condition": {
+          "field": "lastReplyAt",
+          "operator": "exists"
+        },
+        "yes": "step-responded",
+        "no": "step-4"
+      }
+    },
+    {
+      "id": "step-4",
+      "type": "EMAIL",
+      "label": "Follow-Up Email",
+      "config": {
+        "subject": "Following up, {{contact.firstName}}",
+        "body": "Hey {{contact.firstName}},\n\nJust circling back on my last email — wanted to make sure it didn't get buried.\n\nIs this still relevant for you?\n\nBest,\n{{user.name}}"
+      }
+    },
+    {
+      "id": "step-5",
+      "type": "WAIT",
+      "label": "Wait 5 days",
+      "config": {
+        "duration": 5,
+        "unit": "days"
+      }
+    },
+    {
+      "id": "step-6",
+      "type": "BRANCH",
+      "label": "Did they respond?",
+      "config": {
+        "condition": {
+          "field": "lastReplyAt",
+          "operator": "exists"
+        },
+        "yes": "step-responded",
+        "no": "step-7"
+      }
+    },
+    {
+      "id": "step-7",
+      "type": "EMAIL",
+      "label": "VSL Email",
+      "config": {
+        "subject": "I made this for you, {{contact.firstName}}",
+        "body": "Hey {{contact.firstName}},\n\nI put together a short video specifically about the problem I mentioned — I think you'll find it valuable even if the timing isn't right.\n\n[Video Link]\n\nLet me know what you think.\n\n{{user.name}}"
+      }
+    },
+    {
+      "id": "step-responded",
+      "type": "EMAIL",
+      "label": "Response Close Email",
+      "config": {
+        "subject": "Great to hear from you, {{contact.firstName}}",
+        "body": "Thanks for getting back to me, {{contact.firstName}}!\n\nI'd love to connect and learn more about what you're working on. Here's a link to grab 15 minutes:\n\n[Calendar Link]\n\nLooking forward to it,\n{{user.name}}"
+      }
+    }
+  ]
+}

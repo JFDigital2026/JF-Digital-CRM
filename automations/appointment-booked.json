@@ -1,0 +1,28 @@
+{
+  "name": "Appointment Booked",
+  "description": "Tags contact and creates follow-up task when an appointment is booked",
+  "trigger": "APPOINTMENT_BOOKED",
+  "conditions": [],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "TAG",
+      "label": "Tag as Appointment Booked",
+      "config": {
+        "action": "add",
+        "tag": "appointment-booked"
+      }
+    },
+    {
+      "id": "step-2",
+      "type": "TASK",
+      "label": "Prep call notes",
+      "config": {
+        "title": "Prep for call with {{contact.firstName}} {{contact.lastName}}",
+        "description": "Review contact history and prepare talking points before the appointment.",
+        "dueDays": 0,
+        "priority": "HIGH"
+      }
+    }
+  ]
+}
