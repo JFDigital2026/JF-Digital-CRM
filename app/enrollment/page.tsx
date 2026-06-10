@@ -783,6 +783,19 @@ export default function EnrollmentPage() {
         className="relative hidden lg:flex lg:w-[42%] xl:w-[45%] flex-col overflow-hidden"
         style={{ backgroundColor: '#415A77' }}
       >
+        {/* Back button — top left */}
+        <div className="absolute top-5 left-6 z-10">
+          <a
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-white/70 hover:text-white transition-colors"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back
+          </a>
+        </div>
+
         <div className="relative flex-1 overflow-hidden">
           <img
             src="/jf-logo-icon.png"
@@ -817,16 +830,6 @@ export default function EnrollmentPage() {
 
         <div className="flex flex-1 flex-col overflow-y-auto px-10 py-8">
           <div className="mb-5 shrink-0">
-            <a
-              href="/dashboard"
-              className="mb-4 inline-flex items-center gap-1.5 text-xs font-medium transition-colors hover:text-[#0D1B2A]"
-              style={{ color: '#415A77' }}
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back
-            </a>
             <h1 className="text-2xl font-bold tracking-tight text-[#0D1B2A]">Client Enrollment</h1>
             <p className="mt-1 text-sm text-[#5a6a7e]">Create a new client account and save payment on file.</p>
           </div>
