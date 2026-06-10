@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import { useEffect, useState, useCallback } from 'react'
 import {
   format,
@@ -110,7 +109,8 @@ function LeftPanel({
 
       {/* Logo */}
       <div className="mb-5">
-        <Image src="/jf-digital-logo.png" alt="JF Digital" width={120} height={40} className="object-contain" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/jf-digital-logo.png" alt="JF Digital" className="h-10 w-auto object-contain" />
       </div>
 
       <p className="text-xs font-semibold text-[#4a5568] mb-1">JF Digital</p>
@@ -574,7 +574,7 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
   // ── Layout ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="w-full max-w-[1100px] min-h-screen bg-[#e8ebee] shadow-lg flex">
+    <div className="w-full min-h-screen bg-[#e8ebee] flex">
       {/* Left panel */}
       <LeftPanel
         config={config}
@@ -585,10 +585,10 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
 
       {/* Right panel */}
       {view === 'picker' && (
-        <div className="flex-1 flex flex-col px-10 py-10 min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col px-10 py-10">
           <h2 className="text-lg font-bold text-[#1a2535] mb-7">Select Date &amp; Time</h2>
 
-          <div className="flex gap-0 items-start flex-1 min-h-0">
+          <div className="flex gap-0 items-start">
             {/* Calendar */}
             <div className="shrink-0">
               <Calendar
@@ -599,10 +599,10 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
             </div>
 
             {/* Divider */}
-            <div className="w-px bg-[#d1d5db] self-stretch mx-8" />
+            <div className="w-px bg-[#d1d5db] mx-8" style={{ minHeight: '360px' }} />
 
-            {/* Time slots — scrollable column */}
-            <div className="flex-1 min-w-0 overflow-y-auto" style={{ maxHeight: '420px' }}>
+            {/* Time slots */}
+            <div className="flex-1 max-w-[220px]">
               {noSlots && !slotsLoading && (
                 <p className="text-xs text-red-400 mb-3">No times available on this date.</p>
               )}
