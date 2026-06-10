@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState, useCallback } from 'react'
 import {
   format,
@@ -94,7 +95,7 @@ function LeftPanel({
   const timeLabel = selectedTime ? formatTime12(selectedTime) : null
 
   return (
-    <div className="w-[340px] shrink-0 px-10 py-10 border-r border-[#d1d5db]">
+    <div className="w-[300px] shrink-0 px-8 py-10 border-r border-[#d1d5db]">
       {onBack && (
         <button
           onClick={onBack}
@@ -107,11 +108,9 @@ function LeftPanel({
         </button>
       )}
 
-      {/* Logo placeholder */}
-      <div className="mb-4 flex items-center gap-2">
-        <div className="h-8 w-8 rounded-md bg-[#4b6070] flex items-center justify-center">
-          <span className="text-xs font-bold text-white">JF</span>
-        </div>
+      {/* Logo */}
+      <div className="mb-5">
+        <Image src="/jf-digital-logo.png" alt="JF Digital" width={120} height={40} className="object-contain" />
       </div>
 
       <p className="text-xs font-semibold text-[#4a5568] mb-1">JF Digital</p>
@@ -265,7 +264,7 @@ function TimeSlots({
 }) {
   if (loading) {
     return (
-      <div className="w-[180px] flex items-start justify-center pt-8">
+      <div className="flex items-start justify-center pt-8 w-full">
         <div className="h-6 w-6 rounded-full border-2 border-[#4b6070] border-t-transparent animate-spin" />
       </div>
     )
@@ -273,7 +272,7 @@ function TimeSlots({
 
   if (slots.length === 0) {
     return (
-      <div className="w-[180px] flex items-start pt-8">
+      <div className="flex items-start pt-8 w-full">
         <p className="text-xs text-[#9ca3af] text-center w-full">
           Select a date to see available times
         </p>
@@ -282,7 +281,7 @@ function TimeSlots({
   }
 
   return (
-    <div className="w-[180px] flex flex-col gap-2.5 overflow-y-auto max-h-[420px] pr-1">
+    <div className="flex flex-col gap-2.5 w-full pr-1">
       {slots.map((slot) => {
         const active = selectedTime === slot
         return (
@@ -575,7 +574,7 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
   // ── Layout ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="w-full max-w-[900px] rounded-2xl overflow-hidden bg-[#e8ebee] shadow-lg flex min-h-[560px]">
+    <div className="w-full max-w-[1100px] min-h-screen bg-[#e8ebee] shadow-lg flex">
       {/* Left panel */}
       <LeftPanel
         config={config}
@@ -586,22 +585,24 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
 
       {/* Right panel */}
       {view === 'picker' && (
-        <div className="flex-1 px-10 py-10">
+        <div className="flex-1 flex flex-col px-10 py-10 min-w-0 overflow-hidden">
           <h2 className="text-lg font-bold text-[#1a2535] mb-7">Select Date &amp; Time</h2>
 
-          <div className="flex gap-8 items-start">
+          <div className="flex gap-0 items-start flex-1 min-h-0">
             {/* Calendar */}
-            <Calendar
-              selectedDate={selectedDate}
-              onDateClick={handleDateClick}
-              loadingDate={loadingDate}
-            />
+            <div className="shrink-0">
+              <Calendar
+                selectedDate={selectedDate}
+                onDateClick={handleDateClick}
+                loadingDate={loadingDate}
+              />
+            </div>
 
             {/* Divider */}
-            <div className="w-px bg-[#d1d5db] self-stretch mx-2" />
+            <div className="w-px bg-[#d1d5db] self-stretch mx-8" />
 
-            {/* Time slots */}
-            <div className="flex-1">
+            {/* Time slots — scrollable column */}
+            <div className="flex-1 min-w-0 overflow-y-auto" style={{ maxHeight: '420px' }}>
               {noSlots && !slotsLoading && (
                 <p className="text-xs text-red-400 mb-3">No times available on this date.</p>
               )}
@@ -615,19 +616,19 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
           </div>
 
           {/* Timezone */}
-          <div className="mt-8 flex items-center gap-2 text-sm text-[#4a5568]">
-            <p className="text-xs font-semibold text-[#4a5568] mb-0.5">Time zone</p>
-          </div>
-          <div className="flex items-center gap-2 mt-1">
-            <svg className="h-4 w-4 text-[#9ca3af] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-            </svg>
-            <span className="text-sm text-[#4a5568]">{timezone}</span>
-            <svg className="h-3.5 w-3.5 text-[#9ca3af]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
+          <div className="mt-8">
+            <p className="text-xs font-semibold text-[#4a5568] mb-1.5">Time zone</p>
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-[#9ca3af] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              <span className="text-sm text-[#4a5568]">{timezone}</span>
+              <svg className="h-3.5 w-3.5 text-[#9ca3af]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
         </div>
       )}
