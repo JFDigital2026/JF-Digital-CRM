@@ -125,10 +125,34 @@ function EnrollmentForm() {
   const [calcRetainerPct,setCalcRetainerPct]= useState<1 | 1.2 | 1.5>(1.2)
 
   useEffect(() => {
-    fetch('/api/products')
-      .then((r) => r.json())
-      .then((d) => setProducts(d.products ?? []))
-      .catch(() => {})
+    async function loadProducts() {
+      try {
+        const res = await fetch('/api/products')
+        const d = await res.json()
+        let prods: Product[] = d.products ?? []
+
+        // Auto-create default products if none exist for this user
+        if (prods.length === 0) {
+          const defaults = [
+            { name: 'Setup Fee', description: 'One-time setup charge', type: 'ONE_TIME', price: 0, active: true },
+            { name: 'Monthly Retainer', description: 'Recurring monthly retainer', type: 'SUBSCRIPTION', price: 0, interval: 'MONTHLY', active: true },
+          ]
+          const created = await Promise.all(
+            defaults.map((p) =>
+              fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(p),
+              }).then((r) => r.json())
+            )
+          )
+          prods = created.filter((p) => p.id)
+        }
+
+        setProducts(prods)
+      } catch (_) {}
+    }
+    loadProducts()
   }, [])
 
   const addService = () => setServices((prev) => [...prev, newLine()])
