@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
 import { triggerAutomation } from '@/lib/automation-engine'
 import { rateLimit, getIp } from '@/lib/rate-limit'
+import { createZoomMeeting } from '@/lib/zoom'
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
@@ -155,12 +156,34 @@ export async function POST(req: Request) {
     },
   })
 
+  // ── Zoom meeting + emails (non-fatal) ────────────────────────────────────
+  let zoomJoinUrl: string | null = null
+  let zoomStartUrl: string | null = null
+
+  if (process.env.ZOOM_ACCOUNT_ID && process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET) {
+    try {
+      const topic = `${firstName} ${lastName} ${config.name}`
+      const zoom = await createZoomMeeting(topic, startTime, config.duration)
+      zoomJoinUrl = zoom.joinUrl
+      zoomStartUrl = zoom.startUrl
+
+      // Store Zoom link in event notes
+      const updatedNotes = [notes ?? null, `Zoom: ${zoomJoinUrl}`].filter(Boolean).join('\n')
+      await prisma.calendarEvent.update({
+        where: { id: event.id },
+        data: { notes: updatedNotes },
+      })
+    } catch (_err) {
+      // Zoom failure should not fail the booking
+    }
+  }
+
   // Emails via Resend (non-fatal)
   if (process.env.RESEND_API_KEY) {
     try {
       const resend = new Resend(process.env.RESEND_API_KEY)
       const from = process.env.RESEND_FROM_EMAIL ?? 'bookings@jf-digital.com'
-      const notifyEmail = 'jfreeman@jf-digital.com'
+      const notifyEmail = process.env.NOTIFY_EMAIL ?? 'jacefree04@gmail.com'
 
       const dateDisplay = startTime.toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -169,7 +192,23 @@ export async function POST(req: Request) {
         hour: '2-digit', minute: '2-digit',
       })
 
-      // ── Client confirmation email ──────────────────────────────────────────
+      const zoomClientBlock = zoomJoinUrl ? `
+            <tr><td style="padding:6px 0;">
+              <p style="margin:0;color:#6b7d8e;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Zoom Link</p>
+              <p style="margin:4px 0 0;"><a href="${zoomJoinUrl}" style="color:#415A77;font-size:15px;font-weight:600;word-break:break-all;">${zoomJoinUrl}</a></p>
+            </td></tr>` : ''
+
+      const zoomOwnerBlock = zoomStartUrl ? `
+        <tr><td style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Your Host Link (start the meeting)</p>
+          <p style="margin:3px 0 0;"><a href="${zoomStartUrl}" style="color:#415A77;font-size:14px;word-break:break-all;">${zoomStartUrl}</a></p>
+        </td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid #f0f2f5;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Guest Join Link</p>
+          <p style="margin:3px 0 0;"><a href="${zoomJoinUrl}" style="color:#415A77;font-size:14px;word-break:break-all;">${zoomJoinUrl}</a></p>
+        </td></tr>` : ''
+
+      // ── Client confirmation email ────────────────────────────────────────
       const clientHtml = `
 <!DOCTYPE html>
 <html>
@@ -178,13 +217,11 @@ export async function POST(req: Request) {
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 20px;">
     <tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-        <!-- Header -->
         <tr>
           <td style="background:#1a2535;padding:28px 36px;">
             <p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:-0.3px;">JF Digital</p>
           </td>
         </tr>
-        <!-- Body -->
         <tr>
           <td style="padding:36px;">
             <p style="margin:0 0 6px;color:#4b6070;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Booking Confirmed</p>
@@ -201,16 +238,16 @@ export async function POST(req: Request) {
                 <p style="margin:0;color:#6b7d8e;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Duration</p>
                 <p style="margin:4px 0 0;color:#1a2535;font-size:15px;font-weight:600;">${config.duration} minutes</p>
               </td></tr>
+              ${zoomClientBlock}
             </table>
 
             ${config.confirmationMessage ? `<p style="margin:0 0 24px;color:#4a5568;font-size:14px;line-height:1.6;">${config.confirmationMessage}</p>` : ''}
 
             <p style="margin:0 0 6px;color:#4a5568;font-size:14px;line-height:1.6;">
-              Hi ${firstName}, your appointment has been confirmed. If anything changes, please reach out as soon as possible so we can reschedule.
+              Hi ${firstName}, your appointment has been confirmed.${zoomJoinUrl ? ' Use the Zoom link above to join the call.' : ''} If anything changes, please reach out as soon as possible so we can reschedule.
             </p>
           </td>
         </tr>
-        <!-- Footer -->
         <tr>
           <td style="padding:20px 36px;border-top:1px solid #edf0f3;">
             <p style="margin:0;color:#9ca3af;font-size:12px;">JF Digital &middot; jf-digital.com</p>
@@ -229,7 +266,7 @@ export async function POST(req: Request) {
         html: clientHtml,
       })
 
-      // ── Owner notification email ───────────────────────────────────────────
+      // ── Owner notification email ─────────────────────────────────────────
       const notifyHtml = `
 <!DOCTYPE html>
 <html>
@@ -256,6 +293,7 @@ export async function POST(req: Request) {
           <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Date &amp; Time</p>
           <p style="margin:3px 0 0;color:#1a2535;font-size:14px;font-weight:600;">${dateDisplay} at ${timeDisplay}</p>
         </td></tr>
+        ${zoomOwnerBlock}
         ${notes ? `<tr><td style="padding:8px 0;">
           <p style="margin:0;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Notes</p>
           <p style="margin:3px 0 0;color:#4a5568;font-size:14px;">${notes}</p>
