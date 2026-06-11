@@ -1,0 +1,47 @@
+{
+  "name": "24 Hour Reminder",
+  "description": "Sends a reminder email to the booker 24 hours before their scheduled call",
+  "trigger": "SCHEDULED_CRON",
+  "schedule": "*/15 * * * *",
+  "executor": "app/api/cron/reminders/route.ts",
+  "timing": "24h",
+  "conditions": [
+    {
+      "field": "calendarConfig.reminderTiming",
+      "operator": "includes",
+      "value": "24h"
+    },
+    {
+      "field": "status",
+      "operator": "equals",
+      "value": "CONFIRMED"
+    },
+    {
+      "field": "reminder24hSent",
+      "operator": "equals",
+      "value": false
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "EMAIL",
+      "label": "Send 24h reminder to booker",
+      "config": {
+        "to": "{{contact.email}}",
+        "subject": "Reminder: we're talking tomorrow",
+        "body": "Hey {{contact.firstName}},\n\nJust a reminder that we're talking tomorrow.\n\n📅 {{event.date}}\n🕐 {{event.time}} ET\n📞 {{event.zoomUrl}}\n\nCome ready to talk through how your business runs — that's all the prep you need.\n\nNeed to reschedule? {{rescheduleUrl}}\n\nSee you tomorrow,\nJace\nJF Digital"
+      }
+    },
+    {
+      "id": "step-2",
+      "type": "UPDATE_FIELD",
+      "label": "Mark 24h reminder sent",
+      "config": {
+        "model": "CalendarEvent",
+        "field": "reminder24hSent",
+        "value": true
+      }
+    }
+  ]
+}

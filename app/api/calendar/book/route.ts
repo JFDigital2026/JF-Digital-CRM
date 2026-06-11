@@ -320,42 +320,6 @@ export async function POST(req: Request) {
     }
   }
 
-  // Queue reminders (best-effort)
-  try {
-    for (const timing of config.reminderTiming) {
-      let offsetMs = 0
-      if (timing === '24h') offsetMs = 24 * 60 * 60 * 1000
-      else if (timing === '1h') offsetMs = 60 * 60 * 1000
-
-      if (offsetMs > 0) {
-        const executeAt = new Date(startTime.getTime() - offsetMs)
-        if (executeAt > new Date()) {
-          // AutomationQueue requires an automationId FK — find a stub or skip gracefully
-          const automation = await prisma.automation.findFirst({
-            where: { userId: config.userId },
-          })
-          if (automation) {
-            await prisma.automationQueue.create({
-              data: {
-                automationId: automation.id,
-                contactId: contact.id,
-                actionPayload: {
-                  type: 'reminder_email',
-                  calendarEventId: event.id,
-                  email,
-                  name: `${firstName} ${lastName}`,
-                },
-                executeAt,
-              },
-            })
-          }
-        }
-      }
-    }
-  } catch (_err) {
-    // Reminder queuing failure should not fail the booking
-  }
-
   // Notification for calendar owner
   await prisma.notification.create({
     data: {

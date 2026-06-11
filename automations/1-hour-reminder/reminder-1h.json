@@ -1,0 +1,47 @@
+{
+  "name": "1 Hour Reminder",
+  "description": "Sends a reminder email to the booker 1 hour before their scheduled call",
+  "trigger": "SCHEDULED_CRON",
+  "schedule": "*/15 * * * *",
+  "executor": "app/api/cron/reminders/route.ts",
+  "timing": "1h",
+  "conditions": [
+    {
+      "field": "calendarConfig.reminderTiming",
+      "operator": "includes",
+      "value": "1h"
+    },
+    {
+      "field": "status",
+      "operator": "equals",
+      "value": "CONFIRMED"
+    },
+    {
+      "field": "reminder1hSent",
+      "operator": "equals",
+      "value": false
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "EMAIL",
+      "label": "Send 1h reminder to booker",
+      "config": {
+        "to": "{{contact.email}}",
+        "subject": "We're on in one hour",
+        "body": "Hey {{contact.firstName}},\n\nWe're on in one hour.\n\n📅 {{event.date}}\n🕐 {{event.time}} ET\n📞 {{event.zoomUrl}}\n\nSee you soon,\nJace\nJF Digital"
+      }
+    },
+    {
+      "id": "step-2",
+      "type": "UPDATE_FIELD",
+      "label": "Mark 1h reminder sent",
+      "config": {
+        "model": "CalendarEvent",
+        "field": "reminder1hSent",
+        "value": true
+      }
+    }
+  ]
+}

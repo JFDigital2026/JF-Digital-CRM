@@ -513,6 +513,8 @@ model CalendarEvent {
   status           CalendarEventStatus @default(CONFIRMED)
   notes            String?
   reminderSent     Boolean             @default(false)
+  reminder24hSent  Boolean             @default(false)
+  reminder1hSent   Boolean             @default(false)
   googleEventId    String?
   createdAt        DateTime            @default(now())
 

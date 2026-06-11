@@ -259,6 +259,8 @@ export default function CalendarSettingsPage() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [localConfig, setLocalConfig] = useState<CalendarConfig | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copySource, setCopySource] = useState<string | null>(null)
+  const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set())
 
   const update = useCallback(
     <K extends keyof CalendarConfig>(key: K, value: CalendarConfig[K]) => {
@@ -372,6 +374,19 @@ export default function CalendarSettingsPage() {
         },
       }
     })
+  }
+
+  const applyCopy = () => {
+    if (!copySource || !localConfig) return
+    const source = localConfig.availabilityJson[copySource]
+    setLocalConfig((prev) => {
+      if (!prev) return prev
+      const newAvail = { ...prev.availabilityJson }
+      copyTargets.forEach((day) => { newAvail[day] = { ...source } })
+      return { ...prev, availabilityJson: newAvail }
+    })
+    setCopySource(null)
+    setCopyTargets(new Set())
   }
 
   const toggleReminderTiming = (value: string) => {
@@ -661,8 +676,25 @@ export default function CalendarSettingsPage() {
               start: '09:00',
               end: '17:00',
             }
+            const isCopySource = copySource === day
+            const isCopyMode = copySource !== null
             return (
               <div key={day} className="flex items-center gap-3">
+                {isCopyMode && !isCopySource && (
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-[#415A77] focus:ring-[#415A77]/20 cursor-pointer"
+                    checked={copyTargets.has(day)}
+                    onChange={() => {
+                      setCopyTargets((prev) => {
+                        const next = new Set(prev)
+                        next.has(day) ? next.delete(day) : next.add(day)
+                        return next
+                      })
+                    }}
+                  />
+                )}
+                {isCopyMode && isCopySource && <div className="w-4" />}
                 <Toggle
                   checked={dayConfig.enabled}
                   onChange={(v) => updateAvailabilityDay(day, 'enabled', v)}
@@ -670,7 +702,7 @@ export default function CalendarSettingsPage() {
                 <span
                   className={cn(
                     'w-24 shrink-0 text-sm font-medium',
-                    dayConfig.enabled ? 'text-gray-800' : 'text-gray-400'
+                    isCopySource ? 'text-[#415A77] font-semibold' : dayConfig.enabled ? 'text-gray-800' : 'text-gray-400'
                   )}
                 >
                   {day}
@@ -690,6 +722,16 @@ export default function CalendarSettingsPage() {
                       onChange={(e) => updateAvailabilityDay(day, 'end', e.target.value)}
                       className="rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-900 outline-none focus:border-[#415A77] focus:ring-2 focus:ring-[#415A77]/20 transition-colors"
                     />
+                    {!isCopyMode && (
+                      <button
+                        type="button"
+                        onClick={() => { setCopySource(day); setCopyTargets(new Set()) }}
+                        className="ml-1 p-1 text-gray-400 hover:text-[#415A77] transition-colors"
+                        title="Copy times to other days"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <span className="text-sm text-gray-400">Unavailable</span>
@@ -698,6 +740,32 @@ export default function CalendarSettingsPage() {
             )
           })}
         </div>
+
+        {/* Copy mode action bar */}
+        {copySource && (
+          <div className="mt-3 flex items-center gap-3 rounded-md bg-blue-50 border border-blue-200 px-4 py-2.5">
+            <span className="text-sm text-blue-700 flex-1">
+              {copyTargets.size === 0
+                ? 'Check the days you want to copy these hours to'
+                : `Apply to ${copyTargets.size} day${copyTargets.size > 1 ? 's' : ''}`}
+            </span>
+            <button
+              type="button"
+              onClick={applyCopy}
+              disabled={copyTargets.size === 0}
+              className="rounded-md bg-[#415A77] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-[#364d66] transition-colors"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={() => { setCopySource(null); setCopyTargets(new Set()) }}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </Section>
 
       {/* ── Section 3: Booking Rules ── */}
@@ -992,34 +1060,8 @@ export default function CalendarSettingsPage() {
       {/* ── Section 5: Notifications ── */}
       <Section
         title="Notifications"
-        subtitle="Configure confirmation and reminder messages."
+        subtitle="Confirmation email sends automatically on every booking. Choose when to send reminders."
       >
-        {/* Confirmation */}
-        <div className="mb-5">
-          <div className="flex items-center gap-3 mb-3">
-            <Toggle
-              checked={!!localConfig.confirmationMessage}
-              onChange={(v) =>
-                update(
-                  'confirmationMessage',
-                  v ? 'Thank you for booking! We look forward to speaking with you.' : null
-                )
-              }
-              label="Send confirmation email"
-            />
-          </div>
-          {!!localConfig.confirmationMessage && (
-            <textarea
-              className={inputClass}
-              rows={3}
-              value={localConfig.confirmationMessage}
-              onChange={(e) => update('confirmationMessage', e.target.value || null)}
-              placeholder="Enter your confirmation message…"
-            />
-          )}
-        </div>
-
-        {/* Reminders */}
         <div>
           <p className="mb-2 text-sm font-medium text-gray-700">Reminder Timing</p>
           <div className="flex flex-col gap-2">
