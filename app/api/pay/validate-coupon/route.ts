@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
+import { rateLimit, getIp } from '@/lib/rate-limit'
 
 export async function GET(req: Request) {
+  const rl = rateLimit(getIp(req), 30, 60_000) // 30 coupon checks/min per IP
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   const productId = searchParams.get('productId')

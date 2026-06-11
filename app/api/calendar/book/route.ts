@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
 import { triggerAutomation } from '@/lib/automation-engine'
+import { rateLimit, getIp } from '@/lib/rate-limit'
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
@@ -69,6 +70,9 @@ async function isSlotAvailable(
 }
 
 export async function POST(req: Request) {
+  const rl = rateLimit(getIp(req), 10, 60_000) // 10 bookings/min per IP
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+
   const body = await req.json()
   const { calId, date, time, firstName, lastName, email, phone, notes, confirmedContactId } = body
 

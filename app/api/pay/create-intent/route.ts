@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
+import { rateLimit, getIp } from '@/lib/rate-limit'
 
 // Public — no auth (called from payment page)
 export async function POST(req: Request) {
+  const rl = rateLimit(getIp(req), 20, 60_000) // 20 intents/min per IP
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+
   const { productId, contact, couponId } = await req.json()
 
   if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.includes('REPLACE_ME')) {
