@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { createGoogleCalendarEvent } from '@/lib/google-calendar'
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -80,6 +81,29 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         metadata: { calendarEventId: event.id, calendarConfigId: params.id },
       },
     })
+  }
+
+  // Google Calendar sync (best-effort)
+  if (calendar.googleAccessToken || calendar.googleRefreshToken) {
+    try {
+      const contact = contactId
+        ? await prisma.contact.findUnique({ where: { id: contactId } })
+        : null
+      const gcalId = await createGoogleCalendarEvent(calendar, {
+        title,
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        notes: notes ?? null,
+        attendeeEmail: contact?.email ?? null,
+        attendeeName: contact ? `${contact.firstName} ${contact.lastName}` : null,
+      })
+      if (gcalId) {
+        await prisma.calendarEvent.update({
+          where: { id: event.id },
+          data: { googleEventId: gcalId },
+        })
+      }
+    } catch (_) {}
   }
 
   return NextResponse.json(event, { status: 201 })

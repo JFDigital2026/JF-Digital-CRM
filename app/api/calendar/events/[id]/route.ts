@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { triggerAutomation } from '@/lib/automation-engine'
+import { deleteGoogleCalendarEvent } from '@/lib/google-calendar'
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -23,7 +24,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const existing = await prisma.calendarEvent.findUnique({ where: { id: params.id } })
+  const existing = await prisma.calendarEvent.findUnique({
+    where: { id: params.id },
+    include: { calendarConfig: true },
+  })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const body = await req.json()
@@ -55,6 +59,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           metadata: { calendarEventId: params.id },
         },
       })
+      // Delete from Google Calendar (best-effort)
+      if (existing.googleEventId && (existing.calendarConfig.googleAccessToken || existing.calendarConfig.googleRefreshToken)) {
+        deleteGoogleCalendarEvent(existing.calendarConfig, existing.googleEventId).catch(() => {})
+      }
     } else if (status === 'NO_SHOW') {
       await prisma.activityLog.create({
         data: {
@@ -75,4 +83,34 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   return NextResponse.json(updated)
+}
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const existing = await prisma.calendarEvent.findUnique({
+    where: { id: params.id },
+    include: { calendarConfig: true },
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Delete from Google Calendar (best-effort)
+  if (existing.googleEventId && (existing.calendarConfig.googleAccessToken || existing.calendarConfig.googleRefreshToken)) {
+    await deleteGoogleCalendarEvent(existing.calendarConfig, existing.googleEventId).catch(() => {})
+  }
+
+  await prisma.calendarEvent.delete({ where: { id: params.id } })
+
+  await prisma.activityLog.create({
+    data: {
+      userId: session.user.id,
+      contactId: existing.contactId ?? null,
+      type: 'calendar.event_deleted',
+      description: `Calendar event "${existing.title}" was deleted`,
+      metadata: { calendarEventId: params.id },
+    },
+  })
+
+  return new NextResponse(null, { status: 204 })
 }

@@ -5,6 +5,7 @@ import { triggerAutomation } from '@/lib/automation-engine'
 import { rateLimit, getIp } from '@/lib/rate-limit'
 import { createZoomMeeting } from '@/lib/zoom'
 import { createRescheduleToken } from '@/lib/reschedule-token'
+import { createGoogleCalendarEvent } from '@/lib/google-calendar'
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
@@ -177,6 +178,27 @@ export async function POST(req: Request) {
     } catch (_err) {
       // Zoom failure should not fail the booking
     }
+  }
+
+  // ── Google Calendar (non-fatal) ─────────────────────────────────────────────
+  if (config.googleAccessToken || config.googleRefreshToken) {
+    try {
+      const gcalId = await createGoogleCalendarEvent(config, {
+        title: `${firstName} ${lastName} — ${config.name}`,
+        startTime,
+        endTime,
+        notes: notes ?? null,
+        attendeeEmail: email,
+        attendeeName: `${firstName} ${lastName}`,
+        zoomJoinUrl: zoomJoinUrl ?? null,
+      })
+      if (gcalId) {
+        await prisma.calendarEvent.update({
+          where: { id: event.id },
+          data: { googleEventId: gcalId },
+        })
+      }
+    } catch (_) {}
   }
 
   const rescheduleToken = createRescheduleToken(event.id, config.slug)

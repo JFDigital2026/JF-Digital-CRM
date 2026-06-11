@@ -569,6 +569,7 @@ interface EventSlideOverProps {
   open: boolean
   onClose: () => void
   onUpdate: (updated: CalendarEvent) => void
+  onDelete: (eventId: string) => void
   onReschedule: (contact: ContactOption | null) => void
 }
 
@@ -577,15 +578,18 @@ function EventSlideOver({
   open,
   onClose,
   onUpdate,
+  onDelete,
   onReschedule,
 }: EventSlideOverProps) {
   const router = useRouter()
   const [notes, setNotes] = useState(event?.notes ?? '')
   const [savingNotes, setSavingNotes] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [confirmNoShow, setConfirmNoShow] = useState(false)
   const [confirmComplete, setConfirmComplete] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     setNotes(event?.notes ?? '')
@@ -638,6 +642,20 @@ function EventSlideOver({
   const handleCompleteConfirmed = async () => {
     setConfirmComplete(false)
     await handleStatusChange('COMPLETED')
+  }
+
+  const handleDeleteConfirmed = async () => {
+    setConfirmDelete(false)
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/calendar/events/${event.id}`, { method: 'DELETE' })
+      if (res.ok || res.status === 204) {
+        onDelete(event.id)
+        onClose()
+      }
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -732,37 +750,46 @@ function EventSlideOver({
           </div>
 
           {/* Action buttons */}
-          {event.status === 'CONFIRMED' && (
-            <div className="flex flex-col gap-2 border-t border-gray-100 pt-4">
-              <button
-                onClick={() => {
-                  onClose()
-                  onReschedule(event.contact ?? null)
-                }}
-                className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Reschedule
-              </button>
-              <button
-                onClick={() => setConfirmComplete(true)}
-                className="w-full rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
-              >
-                Mark Completed
-              </button>
-              <button
-                onClick={() => setConfirmNoShow(true)}
-                className="w-full rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors"
-              >
-                Mark No-Show
-              </button>
-              <button
-                onClick={() => setConfirmCancel(true)}
-                className="w-full rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
-              >
-                Cancel Appointment
-              </button>
-            </div>
-          )}
+          <div className="flex flex-col gap-2 border-t border-gray-100 pt-4">
+            {event.status === 'CONFIRMED' && (
+              <>
+                <button
+                  onClick={() => {
+                    onClose()
+                    onReschedule(event.contact ?? null)
+                  }}
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Reschedule
+                </button>
+                <button
+                  onClick={() => setConfirmComplete(true)}
+                  className="w-full rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                >
+                  Mark Completed
+                </button>
+                <button
+                  onClick={() => setConfirmNoShow(true)}
+                  className="w-full rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                >
+                  Mark No-Show
+                </button>
+                <button
+                  onClick={() => setConfirmCancel(true)}
+                  className="w-full rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
+                >
+                  Cancel Appointment
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="w-full rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete Event'}
+            </button>
+          </div>
         </div>
       </SlideOver>
 
@@ -790,6 +817,15 @@ function EventSlideOver({
         title="Mark as Completed"
         description="Mark this appointment as completed?"
         confirmLabel="Mark Completed"
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDeleteConfirmed}
+        title="Delete Event"
+        description="Permanently delete this appointment? This also removes it from Google Calendar and cannot be undone."
+        confirmLabel="Delete Event"
+        destructive
       />
     </>
   )
@@ -1110,6 +1146,11 @@ export default function CalendarDetailPage() {
     setSelectedEvent(updated)
   }
 
+  const handleEventDelete = (eventId: string) => {
+    setEvents((prev) => prev.filter((e) => e.id !== eventId))
+    setSelectedEvent(null)
+  }
+
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event)
     setShowEventSlideOver(true)
@@ -1283,6 +1324,7 @@ export default function CalendarDetailPage() {
           setSelectedEvent(null)
         }}
         onUpdate={handleEventUpdate}
+        onDelete={handleEventDelete}
         onReschedule={(contact) => {
           setShowEventSlideOver(false)
           setSelectedEvent(null)
