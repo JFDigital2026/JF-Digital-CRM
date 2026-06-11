@@ -11,7 +11,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const pipeline = await prisma.pipeline.findFirst({
-    where: { id: params.id, userId: session.user.id },
+    where: { id: params.id },
     include: { stages: true },
   })
   if (!pipeline) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -68,6 +68,6 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await prisma.pipeline.deleteMany({ where: { id: params.id, userId: session.user.id } })
+  await prisma.pipeline.deleteMany({ where: { id: params.id } })
   return NextResponse.json({ ok: true })
 }

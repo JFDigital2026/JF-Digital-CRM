@@ -61,7 +61,7 @@ export async function GET() {
         include: { contact: { select: { id: true, firstName: true, lastName: true } } },
       }),
       prisma.pipeline.findMany({
-        where: { userId: session.user.id },
+        where: {},
         include: {
           stages: {
             orderBy: { order: 'asc' },

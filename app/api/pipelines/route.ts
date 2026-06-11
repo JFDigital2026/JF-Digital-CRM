@@ -8,7 +8,7 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const pipelines = await prisma.pipeline.findMany({
-    where: { userId: session.user.id },
+    where: {},
     include: {
       stages: { orderBy: { order: 'asc' } },
     },

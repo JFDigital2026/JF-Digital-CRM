@@ -131,7 +131,7 @@ export async function POST(req: Request) {
   // Auto-enroll in first stage of default pipeline
   try {
     const pipeline = await prisma.pipeline.findFirst({
-      where: { userId: session.user.id },
+      where: {},
       include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
       orderBy: { createdAt: 'asc' },
     })

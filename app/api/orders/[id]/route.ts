@@ -8,7 +8,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const order = await prisma.order.findFirst({
-    where: { id: params.id, product: { userId: session.user.id } },
+    where: { id: params.id },
     include: {
       contact: true,
       company: { select: { id: true, name: true } },

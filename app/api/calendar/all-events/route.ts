@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const from = searchParams.get('from')
   const to = searchParams.get('to')
 
-  const where: Prisma.CalendarEventWhereInput = { userId: session.user.id }
+  const where: Prisma.CalendarEventWhereInput = {}
   if (from) where.startTime = { ...(where.startTime as object ?? {}), gte: new Date(from) }
   if (to) where.startTime = { ...(where.startTime as object ?? {}), lte: new Date(to) }
 

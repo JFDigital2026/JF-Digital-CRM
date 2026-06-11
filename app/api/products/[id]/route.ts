@@ -9,7 +9,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const product = await prisma.product.findFirst({
-    where: { id: params.id, userId: session.user.id },
+    where: { id: params.id },
     include: { coupons: true },
   })
 
@@ -22,7 +22,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const current = await prisma.product.findFirst({ where: { id: params.id, userId: session.user.id } })
+  const current = await prisma.product.findFirst({ where: { id: params.id } })
   if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Sync name/description to Stripe if product exists there
@@ -69,7 +69,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const product = await prisma.product.findFirst({ where: { id: params.id, userId: session.user.id } })
+  const product = await prisma.product.findFirst({ where: { id: params.id } })
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   if (stripeReady() && product.stripeProductId) {

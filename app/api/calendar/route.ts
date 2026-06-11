@@ -39,7 +39,7 @@ export async function GET(_req: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const calendars = await prisma.calendarConfig.findMany({
-    where: { userId: session.user.id },
+    where: {},
     include: { _count: { select: { events: true } } },
     orderBy: { createdAt: 'desc' },
   })

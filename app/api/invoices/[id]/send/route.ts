@@ -12,7 +12,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const invoice = await prisma.invoice.findFirst({
-    where: { id: params.id, order: { product: { userId: session.user.id } } },
+    where: { id: params.id },
     include: {
       contact: true,
       order: { include: { product: true } },

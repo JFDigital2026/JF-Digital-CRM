@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const { orderId } = await req.json()
 
   const order = await prisma.order.findFirst({
-    where: { id: orderId, product: { userId: session.user.id } },
+    where: { id: orderId },
     include: {
       contact: true,
       product: true,

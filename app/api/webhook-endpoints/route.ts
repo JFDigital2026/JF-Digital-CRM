@@ -10,7 +10,7 @@ export async function GET() {
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const endpoints = await prisma.webhookEndpoint.findMany({
-      where: { userId: session.user.id },
+      where: {},
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { logs: true } } },
     })

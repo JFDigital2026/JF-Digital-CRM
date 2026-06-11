@@ -9,7 +9,7 @@ export async function PATCH(_req: Request, { params }: { params: { id: string } 
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sub = await prisma.subscription.findFirst({
-    where: { id: params.id, product: { userId: session.user.id } },
+    where: { id: params.id },
   })
   if (!sub) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

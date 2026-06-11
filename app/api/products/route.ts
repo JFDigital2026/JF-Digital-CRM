@@ -13,7 +13,6 @@ export async function GET(req: Request) {
 
   const products = await prisma.product.findMany({
     where: {
-      userId: session.user.id,
       ...(!includeArchived && { archivedAt: null }),
     },
     include: { coupons: { where: { active: true } } },
