@@ -110,10 +110,19 @@ function EnrollmentForm() {
   const [products,  setProducts]  = useState<Product[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Lifetime mode
+  const [lifetimeMode,       setLifetimeMode]       = useState(false)
+  const lifetimeMultiplier = 3
+
   // Setup modal
-  const [showSetup,     setShowSetup]     = useState(false)
-  const [setupProductId, setSetupProductId] = useState('')
-  const [setupBaseFee,  setSetupBaseFee]  = useState('')
+  const [showSetup, setShowSetup] = useState(false)
+  const [setupDeposit,   setSetupDeposit]   = useState({ amount: '' })
+  const [setupCompletion,setSetupCompletion]= useState({ amount: '' })
+  const [setupBaseFee,   setSetupBaseFee]   = useState('')
+  // Savings calculator
+  const [calcSavings,    setCalcSavings]    = useState('')
+  const [calcSetupPct,   setCalcSetupPct]   = useState<10 | 12 | 15>(12)
+  const [calcRetainerPct,setCalcRetainerPct]= useState<1 | 1.2 | 1.5>(1.2)
 
   useEffect(() => {
     fetch('/api/products')
@@ -207,7 +216,17 @@ function EnrollmentForm() {
         country,
         paymentMethodId: paymentMethod?.id,
         existingCompanyId,
-        services: services
+        services: lifetimeMode ? (() => {
+            const recurringLine = services.find((s) => s.chargeType === 'recurring')
+            const base = recurringLine?.baseFee ?? 0
+            const tiers = base > 0 ? calcTiers(base) : null
+            const retainer18Total = tiers ? tiers.price18 * 18 : 0
+            const lifetimePrice = Math.round(retainer18Total * lifetimeMultiplier)
+            const productId = recurringLine?.productId || services[0]?.productId || ''
+            return productId && lifetimePrice > 0
+              ? [{ productId, amount: lifetimePrice, chargeType: 'deposit' as const, durationMonths: undefined }]
+              : []
+          })() : services
           .filter((s) => s.productId && (parseFloat(s.amount) || 0) > 0)
           .map((s) => ({ productId: s.productId, amount: parseFloat(s.amount) || 0, chargeType: s.chargeType, durationMonths: s.durationMonths ?? undefined })),
       }),
@@ -355,65 +374,62 @@ function EnrollmentForm() {
         {/* ── Services ── */}
         <div>
           <div className="mb-2.5 flex items-center justify-between">
-            <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Services</p>
-            <div className="flex items-center gap-2">
-              {/* Setup button */}
-              <button
-                type="button"
-                onClick={() => setShowSetup(true)}
-                className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-70 hover:opacity-100 transition-opacity"
-                title="Configure retainer pricing"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Setup
-              </button>
-              {/* Add one-off line */}
-              <button
-                type="button"
-                onClick={addService}
-                className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-70 hover:opacity-100 transition-opacity"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                Add
-              </button>
+            <div className="flex items-center gap-3">
+              <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Services</p>
+              {/* Lifetime toggle */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <div className="relative">
+                  <input type="checkbox" className="sr-only" checked={lifetimeMode} onChange={(e) => setLifetimeMode(e.target.checked)} />
+                  <div className={`w-7 h-4 rounded-full transition-colors duration-200 ${lifetimeMode ? 'bg-[#415A77]' : 'bg-gray-200'}`} />
+                  <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200 ${lifetimeMode ? 'translate-x-3' : 'translate-x-0'}`} />
+                </div>
+                <span className="text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-80">Lifetime</span>
+              </label>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowSetup(true)}
+              className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-70 hover:opacity-100 transition-opacity"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Setup
+            </button>
           </div>
 
           {/* ── Setup modal ── */}
           {showSetup && (() => {
             const base = parseFloat(setupBaseFee) || 0
             const tiers = base > 0 ? calcTiers(base) : null
-            const setupProduct = products.find((p) => p.id === setupProductId) ?? null
 
             function applySetup() {
-              if (!setupProductId || !tiers) return
-              const existingIdx = services.findIndex((s) => s.chargeType === 'recurring' && s.productId === setupProductId)
-              const line: ServiceLine = {
-                uid: existingIdx >= 0 ? services[existingIdx].uid : Math.random().toString(36).slice(2),
-                productId: setupProductId,
-                chargeType: 'recurring',
-                durationMonths: 18,
-                amount: String(tiers.price18),
-                baseFee: base,
+              const oneTimeProduct = products.find((p) => p.type !== 'SUBSCRIPTION') ?? products[0]
+              const recurringProduct = products.find((p) => p.type === 'SUBSCRIPTION') ?? products[0]
+              const lines: ServiceLine[] = []
+              if (parseFloat(setupDeposit.amount) > 0 && oneTimeProduct) {
+                lines.push({ uid: Math.random().toString(36).slice(2), productId: oneTimeProduct.id, chargeType: 'deposit', amount: setupDeposit.amount, durationMonths: null })
               }
-              if (existingIdx >= 0) {
-                setServices((prev) => prev.map((s, i) => i === existingIdx ? line : s))
-              } else {
-                setServices((prev) => [...prev, line])
+              if (parseFloat(setupCompletion.amount) > 0 && oneTimeProduct) {
+                lines.push({ uid: Math.random().toString(36).slice(2), productId: oneTimeProduct.id, chargeType: 'on_completion', amount: setupCompletion.amount, durationMonths: null })
               }
+              if (tiers && recurringProduct) {
+                lines.push({ uid: Math.random().toString(36).slice(2), productId: recurringProduct.id, chargeType: 'recurring', durationMonths: 18, amount: String(tiers.price18), baseFee: base })
+              }
+              setServices(lines)
               setShowSetup(false)
             }
 
+            const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+              <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase mb-2">{children}</p>
+            )
+
             return (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowSetup(false)}>
-                <div className="bg-white rounded-2xl shadow-2xl w-[480px] p-6 mx-4" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center justify-between mb-5">
-                    <h3 className="text-sm font-bold text-[#0D1B2A]">Retainer Pricing Setup</h3>
+                <div className="bg-white rounded-2xl shadow-2xl w-[520px] max-h-[90vh] overflow-y-auto p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-sm font-bold text-[#0D1B2A]">Service Setup</h3>
                     <button type="button" onClick={() => setShowSetup(false)} className="text-[#8a9bb0] hover:text-[#415A77]">
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -421,71 +437,149 @@ function EnrollmentForm() {
                     </button>
                   </div>
 
-                  {/* Product */}
-                  <div className="mb-4">
-                    <label className={lblCls}>Product / Service</label>
-                    <select
-                      value={setupProductId}
-                      onChange={(e) => setSetupProductId(e.target.value)}
-                      className={fieldCls}
-                    >
-                      <option value="">— Select product —</option>
-                      {products.filter((p) => p.type === 'SUBSCRIPTION').map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Base fee */}
-                  <div className="mb-5">
-                    <label className={lblCls}>Base Monthly Fee</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={setupBaseFee}
-                        onChange={(e) => setSetupBaseFee(e.target.value)}
-                        placeholder="0.00"
-                        className={fieldCls + ' pl-6'}
-                      />
-                    </div>
-                    <p className="text-[10px] text-[#8a9bb0] mt-1">6 mo = base · 12 mo = 15% off · 18 mo = 25% off</p>
-                  </div>
-
-                  {/* Tier preview */}
-                  {tiers && (
-                    <div className="rounded-xl border border-[#415A77]/15 overflow-hidden mb-5">
-                      {([
-                        { months: 6,  label: '6 Months',  price: tiers.price6,  discount: null },
-                        { months: 12, label: '12 Months', price: tiers.price12, discount: 15 },
-                        { months: 18, label: '18 Months', price: tiers.price18, discount: 25 },
-                      ] as const).map((tier, i) => (
-                        <div key={tier.months} className={`flex items-center justify-between px-4 py-3 ${i > 0 ? 'border-t border-[#415A77]/10' : ''} ${tier.months === 18 ? 'bg-[#415A77]/5' : ''}`}>
-                          <div>
-                            <span className="text-sm font-semibold text-[#0D1B2A]">{tier.label}</span>
-                            {tier.discount && (
-                              <span className="ml-2 text-[10px] font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">{tier.discount}% off</span>
-                            )}
-                            {tier.months === 18 && (
-                              <span className="ml-1 text-[10px] font-semibold text-[#415A77] bg-[#415A77]/10 rounded px-1.5 py-0.5">Default</span>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-[#0D1B2A]">${fmtMoney(tier.price)}<span className="text-xs font-normal text-[#8a9bb0]">/mo</span></p>
-                            <p className="text-[11px] text-[#8a9bb0]">${fmtMoney(tier.price * tier.months)} total</p>
+                  {/* ── Savings Calculator ── */}
+                  {(() => {
+                    const savings = parseFloat(calcSavings) || 0
+                    const setupFee = savings > 0 ? Math.round(savings * calcSetupPct / 100) : 0
+                    const half = Math.round(setupFee / 2)
+                    const retainerBase = savings > 0 ? Math.round(savings * calcRetainerPct / 100) : 0
+                    const canApply = savings > 0
+                    return (
+                      <div className="mb-5 p-4 rounded-xl border-2 border-[#415A77]/20 bg-[#415A77]/[0.04]">
+                        <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase mb-3">Savings Calculator</p>
+                        <div className="mb-3">
+                          <label className="mb-1 block text-[10px] font-medium text-gray-500">Annual Savings ($)</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                            <input type="number" min="0" step="100" placeholder="0" value={calcSavings}
+                              onChange={(e) => setCalcSavings(e.target.value)}
+                              className={fieldCls + ' pl-6'} />
                           </div>
                         </div>
-                      ))}
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className="mb-1.5 block text-[10px] font-medium text-gray-500">Setup Fee %</label>
+                            <div className="flex rounded-lg border border-[#415A77]/20 overflow-hidden">
+                              {([10, 12, 15] as const).map((p) => (
+                                <button key={p} type="button" onClick={() => setCalcSetupPct(p)}
+                                  className={`flex-1 py-1.5 text-[11px] font-bold transition-colors ${calcSetupPct === p ? 'bg-[#415A77] text-white' : 'text-[#5a6a7e] hover:bg-[#415A77]/5 bg-white'}`}>
+                                  {p}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-[10px] font-medium text-gray-500">Retainer %/mo</label>
+                            <div className="flex rounded-lg border border-[#415A77]/20 overflow-hidden">
+                              {([1, 1.2, 1.5] as const).map((p) => (
+                                <button key={p} type="button" onClick={() => setCalcRetainerPct(p)}
+                                  className={`flex-1 py-1.5 text-[11px] font-bold transition-colors ${calcRetainerPct === p ? 'bg-[#415A77] text-white' : 'text-[#5a6a7e] hover:bg-[#415A77]/5 bg-white'}`}>
+                                  {p}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        {canApply && (
+                          <div className="mb-3 rounded-lg bg-white border border-[#415A77]/15 divide-y divide-[#415A77]/10 text-xs">
+                            <div className="flex justify-between px-3 py-2">
+                              <span className="text-[#8a9bb0]">Setup fee ({calcSetupPct}%)</span>
+                              <span className="font-bold text-[#0D1B2A]">${setupFee.toLocaleString()} <span className="font-normal text-[#8a9bb0]">(${half.toLocaleString()} + ${half.toLocaleString()})</span></span>
+                            </div>
+                            <div className="flex justify-between px-3 py-2">
+                              <span className="text-[#8a9bb0]">Retainer base ({calcRetainerPct}%/mo)</span>
+                              <span className="font-bold text-[#0D1B2A]">${retainerBase.toLocaleString()}/mo</span>
+                            </div>
+                            <div className="flex justify-between px-3 py-2">
+                              <span className="text-[#8a9bb0]">Client 10× ROI check</span>
+                              <span className={`font-bold ${savings >= (setupFee + retainerBase * 18) * 10 / 10 ? 'text-emerald-600' : 'text-[#0D1B2A]'}`}>
+                                {setupFee + retainerBase * 18 > 0 ? `${(savings / (setupFee + retainerBase * 18)).toFixed(1)}× year-one` : '—'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        <button type="button" disabled={!canApply}
+                          onClick={() => {
+                            setSetupDeposit((d) => ({ ...d, amount: String(half) }))
+                            setSetupCompletion((d) => ({ ...d, amount: String(half) }))
+                            setSetupBaseFee(String(retainerBase))
+                          }}
+                          className="w-full py-2 rounded-lg text-[11px] font-bold tracking-wide transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-[#415A77] text-white hover:bg-[#0D1B2A]">
+                          Apply Calculated Amounts ↓
+                        </button>
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Upfront Charge ── */}
+                  <div className="mb-5 p-4 rounded-xl border border-[#415A77]/15 bg-[#f8fafc]">
+                    <SectionLabel>Upfront Charge</SectionLabel>
+                    <div>
+                      <label className={lblCls}>Amount</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                        <input type="number" min="0" step="0.01" placeholder="0.00" value={setupDeposit.amount}
+                          onChange={(e) => setSetupDeposit((d) => ({ ...d, amount: e.target.value }))}
+                          className={fieldCls + ' pl-6'} />
+                      </div>
                     </div>
-                  )}
+                  </div>
+
+                  {/* ── Upon Completion ── */}
+                  <div className="mb-5 p-4 rounded-xl border border-[#415A77]/15 bg-[#f8fafc]">
+                    <SectionLabel>Upon Completion</SectionLabel>
+                    <div>
+                      <label className={lblCls}>Amount</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                        <input type="number" min="0" step="0.01" placeholder="0.00" value={setupCompletion.amount}
+                          onChange={(e) => setSetupCompletion((d) => ({ ...d, amount: e.target.value }))}
+                          className={fieldCls + ' pl-6'} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Monthly Retainer ── */}
+                  <div className="mb-6 p-4 rounded-xl border border-[#415A77]/15 bg-[#f8fafc]">
+                    <SectionLabel>Monthly Retainer</SectionLabel>
+                    <div className="mb-3">
+                      <label className={lblCls}>Base Monthly Fee</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                        <input type="number" min="0" step="0.01" value={setupBaseFee}
+                          onChange={(e) => setSetupBaseFee(e.target.value)}
+                          placeholder="0.00" className={fieldCls + ' pl-6'} />
+                      </div>
+                      <p className="text-[10px] text-[#8a9bb0] mt-1">6 mo = base · 12 mo = 15% off · 18 mo = 25% off</p>
+                    </div>
+
+                    {tiers && (
+                      <div className="rounded-lg border border-[#415A77]/15 overflow-hidden">
+                        {([
+                          { months: 6,  label: '6 Months',  price: tiers.price6,  discount: null },
+                          { months: 12, label: '12 Months', price: tiers.price12, discount: 15 },
+                          { months: 18, label: '18 Months', price: tiers.price18, discount: 25 },
+                        ] as const).map((tier, i) => (
+                          <div key={tier.months} className={`flex items-center justify-between px-3 py-2.5 ${i > 0 ? 'border-t border-[#415A77]/10' : ''} ${tier.months === 18 ? 'bg-[#415A77]/5' : ''}`}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-semibold text-[#0D1B2A]">{tier.label}</span>
+                              {tier.discount && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">{tier.discount}% off</span>}
+                              {tier.months === 18 && <span className="text-[10px] font-semibold text-[#415A77] bg-[#415A77]/10 rounded px-1.5 py-0.5">Default</span>}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-[#0D1B2A]">${fmtMoney(tier.price)}<span className="text-xs font-normal text-[#8a9bb0]">/mo</span></p>
+                              <p className="text-[10px] text-[#8a9bb0]">${fmtMoney(tier.price * tier.months)} total</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   <button
                     type="button"
-                    disabled={!setupProductId || !tiers}
                     onClick={applySetup}
-                    className="w-full bg-[#415A77] hover:bg-[#0D1B2A] text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="w-full bg-[#415A77] hover:bg-[#0D1B2A] text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
                   >
                     Apply to Enrollment
                   </button>
@@ -495,144 +589,175 @@ function EnrollmentForm() {
           })()}
 
           {services.length === 0 ? (
-            <p className="text-xs text-[#8a9bb0]">No services — use Setup to configure retainer pricing, or Add for one-off charges.</p>
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-[#415A77]/15 bg-white/40 divide-y divide-[#415A77]/10">
-              {services.map((svc) => {
-                const selectedProduct = products.find((p) => p.id === svc.productId) ?? null
+            <p className="text-xs text-[#8a9bb0]">No services added — click Setup to configure.</p>
+          ) : lifetimeMode ? (() => {
+            const recurringLine = services.find((s) => s.chargeType === 'recurring')
+            const base = recurringLine?.baseFee ?? 0
+            const tiers = base > 0 ? calcTiers(base) : null
+            const retainer18Total = tiers ? tiers.price18 * 18 : 0
+            const lifetimePrice = Math.round(retainer18Total * lifetimeMultiplier)
 
-                // ── Recurring line configured via setup — clean display ──────
-                if (svc.chargeType === 'recurring' && svc.baseFee != null) {
-                  const tiers = calcTiers(svc.baseFee)
-                  const RDUR = [
-                    { months: 6  as const, label: '6 mo',  price: tiers.price6,  discount: null },
-                    { months: 12 as const, label: '12 mo', price: tiers.price12, discount: 15 },
-                    { months: 18 as const, label: '18 mo', price: tiers.price18, discount: 25 },
-                  ]
-                  const activeTier = RDUR.find((d) => d.months === svc.durationMonths) ?? RDUR[2]
-                  const monthlyPrice = activeTier.price
-                  const totalPrice  = monthlyPrice * activeTier.months
+            return (
+              <div className="rounded-xl border-2 border-[#415A77]/30 bg-[#415A77]/5 px-4 py-4 relative overflow-hidden">
+                {/* background shimmer accent */}
+                <div className="absolute inset-0 bg-gradient-to-br from-[#415A77]/5 to-transparent pointer-events-none" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Lifetime Access</span>
+                      <span className="text-[10px] font-bold text-white bg-[#415A77] rounded px-1.5 py-0.5">One-Time</span>
+                    </div>
+                  </div>
 
+                  <p className="text-3xl font-bold text-[#0D1B2A] mb-1">${fmtMoney(lifetimePrice)}</p>
+                  <p className="text-xs text-[#8a9bb0]">one-time payment · never charged again</p>
+
+                  {retainer18Total > 0 && (
+                    <div className="mt-3 pt-3 border-t border-[#415A77]/15">
+                      <p className="text-[11px] text-[#8a9bb0]">
+                        Based on {lifetimeMultiplier}× your 18-month retainer total of ${fmtMoney(retainer18Total)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })() : (() => {
+            const depositLine    = services.find((s) => s.chargeType === 'deposit')
+            const completionLine = services.find((s) => s.chargeType === 'on_completion')
+            const recurringLine  = services.find((s) => s.chargeType === 'recurring')
+            const hasSetup       = depositLine || completionLine
+
+            const GearBtn = ({ onClick }: { onClick: () => void }) => (
+              <button type="button" onClick={onClick} className="text-[#8a9bb0] hover:text-[#415A77] transition-colors">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+            )
+
+            const XBtn = ({ onClick }: { onClick: () => void }) => (
+              <button type="button" onClick={onClick} className="text-[#8a9bb0] hover:text-red-400 transition-colors">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )
+
+            return (
+              <div className="space-y-3">
+
+                {/* ── Setup Charge card ── */}
+                {hasSetup && (() => {
+                  const dep = parseFloat(depositLine?.amount || '0')
+                  const com = parseFloat(completionLine?.amount || '0')
+                  const total = dep + com
                   return (
-                    <div key={svc.uid} className="px-4 py-4">
-                      {/* Product name + remove */}
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-sm font-semibold text-[#0D1B2A]">
-                          {selectedProduct?.name ?? 'Monthly Retainer'}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => setShowSetup(true)}
-                            className="text-[#8a9bb0] hover:text-[#415A77] transition-colors" title="Edit setup">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                          </button>
-                          <button type="button" onClick={() => removeService(svc.uid)}
-                            className="text-[#8a9bb0] hover:text-red-400 transition-colors">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
+                    <div className="rounded-xl border border-[#415A77]/15 bg-white/40 px-4 py-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Setup Charge</span>
+                        <GearBtn onClick={() => setShowSetup(true)} />
                       </div>
-
-                      {/* Duration toggle */}
-                      <div className="flex rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden mb-3 w-fit">
-                        {RDUR.map((d) => (
-                          <button
-                            key={d.months}
-                            type="button"
-                            onClick={() => updateService(svc.uid, { durationMonths: d.months, amount: String(d.price) })}
-                            className={
-                              svc.durationMonths === d.months
-                                ? 'px-3.5 py-1.5 text-[11px] font-semibold bg-[#415A77] text-white transition-colors'
-                                : 'px-3.5 py-1.5 text-[11px] font-medium text-[#5a6a7e] hover:bg-[#415A77]/5 transition-colors'
-                            }
-                          >
-                            {d.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Price display */}
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-xl font-bold text-[#0D1B2A]">${fmtMoney(monthlyPrice)}</span>
-                        <span className="text-sm text-[#8a9bb0]">/mo</span>
-                        <span className="text-sm text-[#5a6a7e]">·</span>
-                        <span className="text-sm font-medium text-[#5a6a7e]">${fmtMoney(totalPrice)} total</span>
-                        {activeTier.discount && (
-                          <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">{activeTier.discount}% off</span>
-                        )}
+                      <p className="text-2xl font-bold text-[#0D1B2A] mb-1">${fmtMoney(total)}</p>
+                      <div className="flex items-center gap-1.5 text-xs text-[#8a9bb0]">
+                        {depositLine    && <span>${fmtMoney(dep)} upfront</span>}
+                        {depositLine && completionLine && <span>·</span>}
+                        {completionLine && <span>${fmtMoney(com)} upon completion</span>}
                       </div>
                     </div>
                   )
-                }
+                })()}
 
-                // ── Standard editable line (deposit / on-completion / manual recurring) ──
-                return (
-                  <div key={svc.uid} className="flex flex-col px-4 py-3 gap-2">
-                    <div className="flex items-center gap-3">
-                      <select
-                        value={svc.productId}
-                        onChange={(e) => {
-                          const p = products.find((pr) => pr.id === e.target.value)
-                          const isSubscription = p?.type === 'SUBSCRIPTION'
-                          updateService(svc.uid, {
-                            productId: e.target.value,
-                            amount: p ? String(p.price) : svc.amount,
-                            chargeType: isSubscription ? 'recurring' : svc.chargeType,
-                            durationMonths: isSubscription ? 18 : svc.durationMonths,
-                          })
-                        }}
-                        className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[#0D1B2A] outline-none cursor-pointer truncate"
-                      >
-                        <option value="">— Product —</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                {/* ── Monthly Retainer card ── */}
+                {recurringLine && (() => {
+                  const base  = recurringLine.baseFee ?? 0
+                  const tiers = base > 0 ? calcTiers(base) : null
+                  const RDUR = tiers
+                    ? [
+                        { months: 18 as const, label: '18 Months', price: tiers.price18, savings: (base - tiers.price18) * 18, badge: 'Best Value' },
+                        { months: 12 as const, label: '12 Months', price: tiers.price12, savings: (base - tiers.price12) * 12, badge: null },
+                        { months: 6  as const, label: '6 Months',  price: tiers.price6,  savings: 0,                           badge: null },
+                      ]
+                    : []
+                  const activeDuration = recurringLine.durationMonths ?? 18
 
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <span className="text-sm text-[#8a9bb0]">$</span>
-                        <input
-                          type="number" min="0" step="0.01"
-                          value={svc.amount}
-                          onChange={(e) => updateService(svc.uid, { amount: e.target.value })}
-                          className="w-20 bg-transparent text-sm font-semibold text-[#0D1B2A] outline-none text-right"
-                          placeholder="0.00"
-                        />
+                  return (
+                    <div className="rounded-xl border border-[#415A77]/15 bg-white/40 overflow-hidden">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+                        <span className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Monthly Retainer</span>
+                        <div className="flex items-center gap-2">
+                          <GearBtn onClick={() => setShowSetup(true)} />
+                          <XBtn onClick={() => removeService(recurringLine.uid)} />
+                        </div>
                       </div>
 
-                      <div className="flex shrink-0 rounded-lg border border-[#c8cdd4] bg-white/60 overflow-hidden">
-                        {CHARGE_TYPES.map((ct) => (
-                          <button
-                            key={ct.value}
-                            type="button"
-                            onClick={() => updateService(svc.uid, { chargeType: ct.value, durationMonths: ct.value !== 'recurring' ? null : (svc.durationMonths ?? 18) })}
-                            className={
-                              svc.chargeType === ct.value
-                                ? 'px-2.5 py-1 text-[10px] font-semibold bg-[#415A77] text-white transition-colors'
-                                : 'px-2.5 py-1 text-[10px] font-medium text-[#5a6a7e] hover:bg-[#415A77]/5 transition-colors'
-                            }
-                          >
-                            {ct.label}
-                          </button>
-                        ))}
-                      </div>
+                      {/* Tier rows */}
+                      <div className="divide-y divide-[#415A77]/8">
+                        {RDUR.map((tier, i) => {
+                          const isActive    = activeDuration === tier.months
+                          const rowTotal    = tier.price * tier.months
+                          const hasDiscount = tier.price < base
+                          const monthsFree  = base > 0 && tier.savings > 0
+                            ? Math.round((tier.savings / base) * 10) / 10
+                            : 0
 
-                      <button type="button" onClick={() => removeService(svc.uid)}
-                        className="shrink-0 text-[#8a9bb0] hover:text-red-400 transition-colors">
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                          return (
+                            <button
+                              key={tier.months}
+                              type="button"
+                              onClick={() => updateService(recurringLine.uid, { durationMonths: tier.months, amount: String(tier.price) })}
+                              className={`w-full text-left py-3 transition-all duration-200 border-l-[3px] ${
+                                isActive
+                                  ? 'bg-[#415A77]/[0.07] border-[#415A77] pl-[13px] pr-4'
+                                  : 'bg-transparent border-transparent px-4 hover:bg-[#415A77]/4'
+                              } ${i === RDUR.length - 1 ? 'pb-4' : ''}`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                {/* Left: label + savings */}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                    <span className={`text-sm font-bold ${isActive ? 'text-[#415A77]' : 'text-[#0D1B2A]'}`}>{tier.label}</span>
+                                    {tier.badge && (
+                                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">{tier.badge}</span>
+                                    )}
+                                  </div>
+                                  {monthsFree > 0 && (
+                                    <p className="text-[11px] text-[#8a9bb0]">Save ${fmtMoney(tier.savings)} — that&apos;s {monthsFree} months free</p>
+                                  )}
+                                  {!hasDiscount && (
+                                    <p className="text-[11px] text-[#8a9bb0]">No commitment discount applied</p>
+                                  )}
+                                </div>
+
+                                {/* Right: pricing */}
+                                <div className="shrink-0 text-right">
+                                  <div className="flex items-baseline justify-end gap-1.5">
+                                    {hasDiscount && (
+                                      <span className="text-xs text-[#b0bac4] line-through">${fmtMoney(base)}/mo</span>
+                                    )}
+                                    {hasDiscount && (
+                                      <svg className="h-3 w-3 text-[#b0bac4] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                      </svg>
+                                    )}
+                                    <span className={`text-sm font-bold ${isActive ? 'text-[#415A77]' : 'text-[#0D1B2A]'}`}>${fmtMoney(tier.price)}/mo</span>
+                                  </div>
+                                  <p className="text-[11px] text-[#8a9bb0] mt-0.5">${fmtMoney(rowTotal)} total</p>
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })()}
+
+              </div>
+            )
+          })()}
         </div>
 
         {/* ── Payment ── */}

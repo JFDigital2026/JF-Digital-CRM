@@ -445,7 +445,7 @@ export default function TasksPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="px-6 py-6">
+    <div className="px-3 py-3 sm:px-6 sm:py-6">
       <PageHeader
         title="Tasks"
         actions={

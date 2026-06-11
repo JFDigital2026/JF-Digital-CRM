@@ -41,15 +41,23 @@ interface FilterSidebarProps {
   onChange: (key: string, value: FilterValue) => void
   onClearAll?: () => void
   className?: string
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
-export function FilterSidebar({
+function FilterContent({
   sections,
   value,
   onChange,
   onClearAll,
-  className,
-}: FilterSidebarProps) {
+  onClose,
+}: {
+  sections: FilterSectionConfig[]
+  value: Record<string, FilterValue>
+  onChange: (key: string, value: FilterValue) => void
+  onClearAll?: () => void
+  onClose?: () => void
+}) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const toggleSection = (key: string) => {
@@ -76,7 +84,7 @@ export function FilterSidebar({
   }
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -91,22 +99,31 @@ export function FilterSidebar({
             </span>
           )}
         </div>
-        {activeCount > 0 && onClearAll && (
-          <button
-            onClick={onClearAll}
-            className="flex items-center gap-1 transition-colors duration-150"
-            style={{ fontSize: 12, color: '#778DA9' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#C0392B' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#778DA9' }}
-          >
-            <X size={12} />
-            Clear all
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {activeCount > 0 && onClearAll && (
+            <button
+              onClick={onClearAll}
+              className="flex items-center gap-1 transition-colors duration-150"
+              style={{ fontSize: 12, color: '#778DA9' }}
+            >
+              <X size={12} />
+              Clear
+            </button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center rounded-lg transition-colors lg:hidden"
+              style={{ width: 32, height: 32, color: '#778DA9' }}
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Sections */}
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5 overflow-y-auto flex-1">
         {sections.map((section) => {
           const isCollapsed = collapsed.has(section.key)
           const sectionValue = value[section.key]
@@ -124,22 +141,12 @@ export function FilterSidebar({
               <button
                 onClick={() => toggleSection(section.key)}
                 className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+                style={{ minHeight: 44 }}
               >
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    color: '#778DA9',
-                  }}
-                >
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#778DA9' }}>
                   {section.label}
                 </span>
-                <motion.div
-                  animate={{ rotate: isCollapsed ? -90 : 0 }}
-                  transition={{ duration: 0.15 }}
-                >
+                <motion.div animate={{ rotate: isCollapsed ? -90 : 0 }} transition={{ duration: 0.15 }}>
                   <ChevronDown size={13} style={{ color: 'rgba(13,27,42,0.25)' }} />
                 </motion.div>
               </button>
@@ -152,30 +159,18 @@ export function FilterSidebar({
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: 0.2, ease: 'easeOut' }}
                   >
-                    <div
-                      className="px-3 pb-3 pt-2"
-                      style={{ borderTop: '1px solid rgba(13,27,42,0.06)' }}
-                    >
+                    <div className="px-3 pb-3 pt-2" style={{ borderTop: '1px solid rgba(13,27,42,0.06)' }}>
                       {section.type === 'checkbox' && (
                         <div className="flex flex-col gap-2">
                           {section.options.map((opt) => {
-                            const checked =
-                              Array.isArray(sectionValue) && sectionValue.includes(opt.value)
+                            const checked = Array.isArray(sectionValue) && sectionValue.includes(opt.value)
                             return (
-                              <label
-                                key={opt.value}
-                                className="flex cursor-pointer items-center gap-2"
-                              >
+                              <label key={opt.value} className="flex cursor-pointer items-center gap-2" style={{ minHeight: 36 }}>
                                 <Checkbox
                                   checked={checked}
                                   onCheckedChange={(c) => {
                                     const current = Array.isArray(sectionValue) ? sectionValue : []
-                                    onChange(
-                                      section.key,
-                                      c
-                                        ? [...current, opt.value]
-                                        : current.filter((v) => v !== opt.value)
-                                    )
+                                    onChange(section.key, c ? [...current, opt.value] : current.filter((v) => v !== opt.value))
                                   }}
                                 />
                                 <span style={{ fontSize: 13, color: '#415A77' }}>{opt.label}</span>
@@ -192,13 +187,7 @@ export function FilterSidebar({
                               key={field}
                               type="date"
                               value={(sectionValue as DateRangeFilterValue)?.[field] ?? ''}
-                              onChange={(e) =>
-                                onChange(section.key, {
-                                  ...(sectionValue as DateRangeFilterValue),
-                                  [field]: e.target.value || undefined,
-                                })
-                              }
-                              placeholder={field === 'from' ? 'From' : 'To'}
+                              onChange={(e) => onChange(section.key, { ...(sectionValue as DateRangeFilterValue), [field]: e.target.value || undefined })}
                               style={inputStyle}
                             />
                           ))}
@@ -215,12 +204,7 @@ export function FilterSidebar({
                               max={section.max}
                               step={(section as NumberRangeSection).step ?? 1}
                               value={(sectionValue as NumberRangeFilterValue)?.[field] ?? ''}
-                              onChange={(e) =>
-                                onChange(section.key, {
-                                  ...(sectionValue as NumberRangeFilterValue),
-                                  [field]: e.target.value ? Number(e.target.value) : undefined,
-                                })
-                              }
+                              onChange={(e) => onChange(section.key, { ...(sectionValue as NumberRangeFilterValue), [field]: e.target.value ? Number(e.target.value) : undefined })}
                               placeholder={field === 'min' ? 'Min' : 'Max'}
                               style={inputStyle}
                             />
@@ -236,5 +220,61 @@ export function FilterSidebar({
         })}
       </div>
     </div>
+  )
+}
+
+export function FilterSidebar({
+  sections,
+  value,
+  onChange,
+  onClearAll,
+  className,
+  mobileOpen = false,
+  onMobileClose,
+}: FilterSidebarProps) {
+  return (
+    <>
+      {/* Desktop: left panel */}
+      <div
+        className={cn(
+          'hidden lg:flex flex-col w-52 shrink-0 pr-4',
+          className
+        )}
+      >
+        <FilterContent sections={sections} value={value} onChange={onChange} onClearAll={onClearAll} />
+      </div>
+
+      {/* Mobile: overlay drawer */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <>
+            <motion.div
+              key="filter-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 lg:hidden"
+              style={{ background: 'rgba(0,0,0,0.4)' }}
+              onClick={onMobileClose}
+            />
+            <motion.div
+              key="filter-drawer"
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              className="fixed left-0 top-0 bottom-0 z-50 lg:hidden p-4 overflow-y-auto"
+              style={{
+                width: 280,
+                background: 'linear-gradient(145deg, #dde3ec 0%, #e8ecf1 100%)',
+              }}
+            >
+              <FilterContent sections={sections} value={value} onChange={onChange} onClearAll={onClearAll} onClose={onMobileClose} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   )
 }

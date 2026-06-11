@@ -997,7 +997,7 @@ export function WidgetGrid({
       {/* Grid */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={layout.map((i) => i.id)} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-12 gap-4 auto-rows-auto">
+          <div className="dashboard-widget-grid grid grid-cols-12 gap-3 sm:gap-4 auto-rows-auto">
             {layout.map((item) => (
               <SortableWidget
                 key={item.id}

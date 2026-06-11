@@ -8,6 +8,9 @@
   .text-balance {
     text-wrap: balance;
   }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 /* ─── Animations ────────────────────────────────────────────────────────────── */
@@ -204,6 +207,14 @@ body {
   top: 0;
   left: 0;
   right: 0;
+}
+
+/* ─── Dashboard widget grid: full-width on mobile ────────────────────────────── */
+
+@media (max-width: 639px) {
+  .dashboard-widget-grid > * {
+    grid-column: span 12 !important;
+  }
 }
 
 /* ─── Reduced motion ─────────────────────────────────────────────────────────── */

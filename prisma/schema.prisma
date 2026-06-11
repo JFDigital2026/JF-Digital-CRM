@@ -14,16 +14,9 @@ enum Role {
   MANAGER
   SALES_REP
   SUPPORT
+  CUSTOM
 }
 
-enum LeadStatus {
-  NEW
-  TRIAL
-  CANNOT_CONTACT
-  LOST
-  ACTIVE
-  CLOSED
-}
 
 enum CustomFieldType {
   TEXT
@@ -150,6 +143,17 @@ model User {
   googleRefreshToken  String?
   googleCalendarEmail String?
 
+  // Multi-user permission fields
+  firstName       String    @default("")
+  lastName        String    @default("")
+  active          Boolean   @default(true)
+  permissions     Json      @default("{}")
+  department      String?
+  title           String?
+  avatarUrl       String?
+  createdByUserId String?
+  lastLoginAt     DateTime?
+
   apiKeys           ApiKey[]
   webhookEndpoints  WebhookEndpoint[]
   pipelines         Pipeline[]
@@ -165,8 +169,15 @@ model User {
   fileAttachments   FileAttachment[]
   customValues      CustomValue[]
   aiConversations   AIConversation[]
+  systemConfigs     SystemConfig[]
+  emailTemplates    EmailTemplate[]
+  emailSignatures   EmailSignature[]
+
+  createdByUser User?  @relation("UserCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdUsers  User[] @relation("UserCreatedBy")
 
   @@index([email])
+  @@index([active])
 }
 
 model CustomValue {
@@ -318,7 +329,7 @@ model Contact {
   title        String?
   role         String?
   companyId    String?
-  leadStatus   LeadStatus @default(NEW)
+  leadStatus   String     @default("NEW")
   source       String?
   tags         String[]
   doNotContact Boolean    @default(false)
@@ -907,4 +918,49 @@ model MetricSnapshot {
   createdAt          DateTime @default(now())
 
   @@index([date])
+}
+
+// ─── Email Templates & Signatures ────────────────────────────────────────────
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  subject   String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model EmailSignature {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  content   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── System Config ────────────────────────────────────────────────────────────
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
 }

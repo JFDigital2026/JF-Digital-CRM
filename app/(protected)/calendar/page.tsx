@@ -829,8 +829,9 @@ function CalendarPageInner() {
 
       {/* ── CALENDAR TAB ──────────────────────────────────────────────────────── */}
       {activeTab === 'calendar' && (
+        <div className="overflow-x-auto">
         <div
-          style={{ height: 'calc(100vh - 108px - 48px)' }}
+          style={{ height: 'calc(100vh - 108px - 48px)', minWidth: 600 }}
           className="flex flex-col overflow-hidden bg-white rounded-xl border border-gray-200"
         >
           {/* Toolbar */}
@@ -1221,6 +1222,7 @@ function CalendarPageInner() {
               </div>
             </>
           )}
+        </div>
         </div>
       )}
 

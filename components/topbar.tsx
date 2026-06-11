@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, Menu } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { NotificationBell } from '@/components/ui/notification-bell'
 import { GlobalSearch } from '@/components/global-search'
@@ -23,7 +23,11 @@ const routeTitles: Record<string, string> = {
   '/settings':     'Settings',
 }
 
-export function Topbar() {
+interface TopbarProps {
+  onMenuClick?: () => void
+}
+
+export function Topbar({ onMenuClick }: TopbarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -51,7 +55,7 @@ export function Topbar() {
   return (
     <>
       <header
-        className="flex shrink-0 items-center gap-4 px-6"
+        className="flex shrink-0 items-center gap-2 sm:gap-4 px-3 sm:px-6"
         style={{
           height: 60,
           background: 'rgba(255,255,255,0.65)',
@@ -60,12 +64,26 @@ export function Topbar() {
           borderBottom: '1px solid rgba(255,255,255,0.50)',
         }}
       >
-        <h1 className="w-40 shrink-0 truncate" style={{ fontSize: 18, fontWeight: 600, color: '#1B263B' }}>
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden flex items-center justify-center rounded-lg transition-colors duration-150 shrink-0"
+          style={{ width: 40, height: 40, color: '#415A77' }}
+          aria-label="Open menu"
+        >
+          <Menu size={22} />
+        </button>
+
+        {/* Page title */}
+        <h1
+          className="shrink-0 truncate"
+          style={{ fontSize: 18, fontWeight: 600, color: '#1B263B', maxWidth: '35vw' }}
+        >
           {title}
         </h1>
 
-        {/* Search trigger */}
-        <div className="mx-auto max-w-xl flex-1">
+        {/* Search — full bar on desktop, icon-only on mobile */}
+        <div className="mx-auto flex-1 max-w-xl hidden sm:block">
           <button
             onClick={() => setSearchOpen(true)}
             className="w-full flex items-center gap-2.5 text-left transition-all duration-200"
@@ -77,14 +95,6 @@ export function Topbar() {
               padding: '0 14px',
               color: '#778DA9',
               fontSize: 14,
-            }}
-            onFocus={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = '#415A77'
-              ;(e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.80)'
-            }}
-            onBlur={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(13,27,42,0.08)'
-              ;(e.currentTarget as HTMLElement).style.background = 'rgba(13,27,42,0.06)'
             }}
           >
             <Search size={15} className="shrink-0" />
@@ -98,11 +108,18 @@ export function Topbar() {
           </button>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <div
-            className="flex items-center justify-center rounded-[10px] transition-colors duration-150"
-            style={{ width: 36, height: 36 }}
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {/* Search icon — mobile only */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="sm:hidden flex items-center justify-center rounded-lg transition-colors duration-150"
+            style={{ width: 40, height: 40, color: '#415A77' }}
+            aria-label="Search"
           >
+            <Search size={20} />
+          </button>
+
+          <div className="flex items-center justify-center rounded-[10px]" style={{ width: 36, height: 36 }}>
             <NotificationBell />
           </div>
           <Avatar className="h-8 w-8 cursor-pointer">

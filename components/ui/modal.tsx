@@ -19,10 +19,11 @@ interface ModalProps {
   title: string
   size?: 'sm' | 'md' | 'lg'
   children: React.ReactNode
+  footer?: React.ReactNode
   className?: string
 }
 
-export function Modal({ open, onClose, title, size = 'md', children, className }: ModalProps) {
+export function Modal({ open, onClose, title, size = 'md', children, footer, className }: ModalProps) {
   useEffect(() => {
     if (!open) return
     const handleKey = (e: KeyboardEvent) => {
@@ -55,11 +56,11 @@ export function Modal({ open, onClose, title, size = 'md', children, className }
             initial="initial"
             animate="animate"
             exit="exit"
-            className={cn('relative w-full glass-card-elevated', sizeClasses[size], className)}
+            className={cn('relative w-full glass-card-elevated flex flex-col max-h-[90dvh]', sizeClasses[size], className)}
           >
             {/* Header */}
             <div
-              className="flex items-center justify-between px-7 py-5"
+              className="flex shrink-0 items-center justify-between px-7 py-5"
               style={{ borderBottom: '1px solid rgba(13,27,42,0.06)' }}
             >
               <h2 style={{ fontSize: 17, fontWeight: 600, color: '#0D1B2A' }}>{title}</h2>
@@ -75,7 +76,14 @@ export function Modal({ open, onClose, title, size = 'md', children, className }
             </div>
 
             {/* Content */}
-            <div className="p-7">{children}</div>
+            <div className="overflow-y-auto p-7">{children}</div>
+
+            {/* Footer — outside scroll area so buttons are always reachable */}
+            {footer && (
+              <div className="shrink-0 px-7 py-4" style={{ borderTop: '1px solid rgba(13,27,42,0.06)' }}>
+                {footer}
+              </div>
+            )}
           </motion.div>
         </div>
       )}

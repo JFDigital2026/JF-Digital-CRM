@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const deactivated = searchParams.get('reason') === 'deactivated'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -50,6 +52,11 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mt-1">Sign in to your workspace</p>
         </CardHeader>
         <CardContent className="pb-8 px-8">
+          {deactivated && (
+            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-700">
+              Your account has been deactivated. Contact your administrator.
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>

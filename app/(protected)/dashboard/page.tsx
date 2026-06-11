@@ -33,7 +33,7 @@ export default function DashboardPage() {
   }, [fetchStats])
 
   return (
-    <div className="p-6 max-w-[1440px]">
+    <div className="p-3 sm:p-6 max-w-[1440px]">
       <WidgetGrid stats={stats} loading={loading} />
     </div>
   )

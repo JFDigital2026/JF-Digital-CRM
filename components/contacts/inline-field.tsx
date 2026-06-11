@@ -9,6 +9,7 @@ interface InlineFieldProps {
   onSave: (value: string) => void
   type?: 'text' | 'email' | 'tel' | 'textarea' | 'select'
   options?: string[]
+  optionLabels?: Record<string, string>
   placeholder?: string
   className?: string
 }
@@ -19,6 +20,7 @@ export function InlineField({
   onSave,
   type = 'text',
   options,
+  optionLabels,
   placeholder = 'Click to edit…',
   className,
 }: InlineFieldProps) {
@@ -61,7 +63,7 @@ export function InlineField({
             <option value="">— Select —</option>
             {options.map((o) => (
               <option key={o} value={o}>
-                {o}
+                {optionLabels?.[o] ?? o}
               </option>
             ))}
           </select>
@@ -90,7 +92,7 @@ export function InlineField({
             local ? 'text-gray-900' : 'italic text-gray-400'
           )}
         >
-          {local || placeholder}
+          {(optionLabels && local ? (optionLabels[local] ?? local) : local) || placeholder}
         </div>
       )}
     </div>

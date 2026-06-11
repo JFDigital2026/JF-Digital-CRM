@@ -17,15 +17,14 @@ import { TaskFormModal } from '@/components/tasks/task-form-modal'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow, format } from 'date-fns'
 
-const STATUS_VARIANT: Record<string, any> = {
+const DEFAULT_STATUS_VARIANT: Record<string, any> = {
   NEW: 'info', TRIAL: 'purple', ACTIVE: 'success',
   LOST: 'neutral', CANNOT_CONTACT: 'error', CLOSED: 'warning',
 }
-const STATUS_LABEL: Record<string, string> = {
+const DEFAULT_STATUS_LABEL: Record<string, string> = {
   NEW: 'New', TRIAL: 'Trial', ACTIVE: 'Active',
   LOST: 'Lost', CANNOT_CONTACT: 'Cannot Contact', CLOSED: 'Closed',
 }
-const LEAD_STATUSES = Object.keys(STATUS_LABEL)
 
 const TASK_STATUS_ICON: Record<string, React.ElementType> = {
   TODO: Circle, IN_PROGRESS: Clock, COMPLETED: CheckSquare,
@@ -66,6 +65,9 @@ export default function ContactDetailPage({ params }: { params: { id: string } }
 
   const [contact, setContact] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [leadStatusOptions, setLeadStatusOptions] = useState<{ value: string; label: string; color?: string }[]>(
+    Object.entries(DEFAULT_STATUS_LABEL).map(([value, label]) => ({ value, label }))
+  )
   const [activeTab, setActiveTab] = useState('activity')
   const [tabData, setTabData] = useState<Record<string, any>>({})
   const [tabLoading, setTabLoading] = useState<Record<string, boolean>>({})
@@ -90,6 +92,13 @@ export default function ContactDetailPage({ params }: { params: { id: string } }
 
   useEffect(() => {
     fetch('/api/custom-fields').then(r => r.ok ? r.json() : []).then(setCustomFields).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/option-lists')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.leadStatus?.items) setLeadStatusOptions(d.leadStatus.items) })
+      .catch(() => {})
   }, [])
 
   const fetchTab = async (tab: string, currentContact?: any) => {
@@ -264,8 +273,8 @@ export default function ContactDetailPage({ params }: { params: { id: string } }
               Message
             </button>
             <StatusBadge
-              variant={STATUS_VARIANT[contact.leadStatus]}
-              label={STATUS_LABEL[contact.leadStatus]}
+              variant={DEFAULT_STATUS_VARIANT[contact.leadStatus] ?? 'neutral'}
+              label={leadStatusOptions.find((o) => o.value === contact.leadStatus)?.label ?? contact.leadStatus}
               dot
             />
             {contact.doNotContact && (
@@ -300,7 +309,8 @@ export default function ContactDetailPage({ params }: { params: { id: string } }
                 label="Lead Status"
                 value={contact.leadStatus}
                 type="select"
-                options={LEAD_STATUSES}
+                options={leadStatusOptions.map((o) => o.value)}
+                optionLabels={Object.fromEntries(leadStatusOptions.map((o) => [o.value, o.label]))}
                 onSave={(v) => patch('leadStatus', v)}
               />
             </div>

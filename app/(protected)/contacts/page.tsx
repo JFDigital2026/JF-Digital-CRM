@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { UserPlus, Upload } from 'lucide-react'
+import { UserPlus, Upload, SlidersHorizontal } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable, type TableColumn } from '@/components/ui/data-table'
 import { SearchInput } from '@/components/ui/search-input'
@@ -15,15 +15,15 @@ import { CSVImportModal } from '@/components/contacts/csv-import-modal'
 import { ContactSlideOver } from '@/components/contacts/contact-slide-over'
 import { format } from 'date-fns'
 
-const STATUS_VARIANT: Record<string, any> = {
+const DEFAULT_STATUS_VARIANT: Record<string, any> = {
   NEW: 'info', TRIAL: 'purple', ACTIVE: 'success',
   LOST: 'neutral', CANNOT_CONTACT: 'error', CLOSED: 'warning',
 }
-const STATUS_LABEL: Record<string, string> = {
+const DEFAULT_STATUS_LABEL: Record<string, string> = {
   NEW: 'New', TRIAL: 'Trial', ACTIVE: 'Active',
   LOST: 'Lost', CANNOT_CONTACT: 'Cannot Contact', CLOSED: 'Closed',
 }
-const LEAD_STATUSES = Object.keys(STATUS_LABEL)
+const DEFAULT_LEAD_STATUSES = Object.keys(DEFAULT_STATUS_LABEL)
 
 type Contact = {
   id: string
@@ -38,20 +38,7 @@ type Contact = {
   createdAt: string
 }
 
-const FILTER_SECTIONS: FilterSectionConfig[] = [
-  {
-    key: 'leadStatus',
-    label: 'Lead Status',
-    type: 'checkbox',
-    options: [
-      { value: 'NEW', label: 'New' },
-      { value: 'TRIAL', label: 'Trial' },
-      { value: 'ACTIVE', label: 'Active' },
-      { value: 'LOST', label: 'Lost' },
-      { value: 'CANNOT_CONTACT', label: 'Cannot Contact' },
-      { value: 'CLOSED', label: 'Closed' },
-    ],
-  },
+const STATIC_FILTER_SECTIONS: FilterSectionConfig[] = [
   {
     key: 'doNotContact',
     label: 'Do Not Contact',
@@ -78,7 +65,11 @@ export default function ContactsPage() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const [customFields, setCustomFields] = useState<any[]>([])
+  const [leadStatusOptions, setLeadStatusOptions] = useState<{ value: string; label: string }[]>(
+    DEFAULT_LEAD_STATUSES.map((v) => ({ value: v, label: DEFAULT_STATUS_LABEL[v] }))
+  )
 
   const fetchContacts = useCallback(async () => {
     setLoading(true)
@@ -102,6 +93,10 @@ export default function ContactsPage() {
     fetch('/api/custom-fields')
       .then((r) => r.ok ? r.json() : [])
       .then(setCustomFields)
+      .catch(() => {})
+    fetch('/api/option-lists')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.leadStatus?.items) setLeadStatusOptions(d.leadStatus.items) })
       .catch(() => {})
   }, [])
 
@@ -152,9 +147,9 @@ export default function ContactsPage() {
             fetchContacts()
           }}
           className="rounded-full border border-gray-200 bg-white px-2 py-1 text-xs font-medium outline-none focus:border-[#415A77] cursor-pointer"
-          style={{ color: STATUS_VARIANT[row.leadStatus] === 'success' ? '#059669' : STATUS_VARIANT[row.leadStatus] === 'error' ? '#dc2626' : STATUS_VARIANT[row.leadStatus] === 'info' ? '#2563eb' : '#6b7280' }}
+          style={{ color: DEFAULT_STATUS_VARIANT[row.leadStatus] === 'success' ? '#059669' : DEFAULT_STATUS_VARIANT[row.leadStatus] === 'error' ? '#dc2626' : DEFAULT_STATUS_VARIANT[row.leadStatus] === 'info' ? '#2563eb' : '#6b7280' }}
         >
-          {LEAD_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+          {leadStatusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
       ),
     },
@@ -192,25 +187,41 @@ export default function ContactsPage() {
 
   return (
     <div className="flex h-full">
-      {/* Filter sidebar */}
+      {/* Filter sidebar (desktop panel + mobile drawer) */}
       <FilterSidebar
-        sections={FILTER_SECTIONS}
+        sections={[
+          { key: 'leadStatus', label: 'Lead Status', type: 'checkbox', options: leadStatusOptions },
+          ...STATIC_FILTER_SECTIONS,
+        ]}
         value={filters}
         onChange={(key, val) => { setFilters((prev) => ({ ...prev, [key]: val })); setPage(1) }}
         onClearAll={() => { setFilters({}); setPage(1) }}
-        className="shrink-0"
+        mobileOpen={mobileFilterOpen}
+        onMobileClose={() => setMobileFilterOpen(false)}
       />
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto px-6 py-6">
+      <div className="flex-1 overflow-auto px-3 py-3 sm:px-6 sm:py-6 min-w-0">
         <PageHeader
           title="Contacts"
           subtitle={`${totalCount} total`}
           actions={
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setMobileFilterOpen(true)}
+                className="lg:hidden flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 bg-white"
+              >
+                <SlidersHorizontal size={14} />
+                Filters
+                {Object.values(filters).filter((v) => Array.isArray(v) ? v.length > 0 : Object.values(v as object).some(Boolean)).length > 0 && (
+                  <span className="flex items-center justify-center rounded-full bg-[#415A77] text-white font-bold" style={{ width: 16, height: 16, fontSize: 10 }}>
+                    {Object.values(filters).filter((v) => Array.isArray(v) ? v.length > 0 : Object.values(v as object).some(Boolean)).length}
+                  </span>
+                )}
+              </button>
+              <button
                 onClick={() => setShowImportModal(true)}
-                className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="hidden sm:flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 <Upload size={15} />
                 Import CSV
@@ -220,7 +231,8 @@ export default function ContactsPage() {
                 className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1B263B] transition-colors"
               >
                 <UserPlus size={15} />
-                New Contact
+                <span className="hidden sm:inline">New Contact</span>
+                <span className="sm:hidden">New</span>
               </button>
             </div>
           }

@@ -356,17 +356,25 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
   const [editError, setEditError] = useState<string | null>(null)
 
   // Re-Enroll modal state
-  const [showEnrollModal, setShowEnrollModal] = useState(false)
-  const [enrollProducts, setEnrollProducts] = useState<Product[]>([])
-  const [enrollForm, setEnrollForm] = useState<EnrollmentForm>({
-    productId: '',
-    contactId: '',
-    chargeType: 'deposit',
-    amount: '',
-    durationMonths: null,
-  })
-  const [enrollSaving, setEnrollSaving] = useState(false)
-  const [enrollError, setEnrollError] = useState<string | null>(null)
+  const [showEnrollModal,    setShowEnrollModal]    = useState(false)
+  const [enrollProducts,     setEnrollProducts]     = useState<Product[]>([])
+  const [enrollContactId,    setEnrollContactId]    = useState('')
+  const [enrollSaving,       setEnrollSaving]       = useState(false)
+  const [enrollError,        setEnrollError]        = useState<string | null>(null)
+
+  // Enroll service lines (mirrors enrollment page)
+  type EnrollSvcLine = { uid: string; productId: string; amount: string; chargeType: 'deposit' | 'on_completion' | 'recurring'; durationMonths: number | null; baseFee?: number }
+  const [enrollServices,     setEnrollServices]     = useState<EnrollSvcLine[]>([])
+  const [enrollShowSetup,    setEnrollShowSetup]    = useState(false)
+  const [enrollSetupDeposit, setEnrollSetupDeposit] = useState({ amount: '' })
+  const [enrollSetupCompl,   setEnrollSetupCompl]   = useState({ amount: '' })
+  const [enrollBaseFee,      setEnrollBaseFee]      = useState('')
+  const [enrollLifetime,     setEnrollLifetime]     = useState(false)
+  const enrollLifetimeMult = 3
+  // Savings calculator
+  const [enrollCalcSavings,    setEnrollCalcSavings]    = useState('')
+  const [enrollCalcSetupPct,   setEnrollCalcSetupPct]   = useState<10 | 12 | 15>(12)
+  const [enrollCalcRetainerPct,setEnrollCalcRetainerPct]= useState<1 | 1.2 | 1.5>(1.2)
 
   // Cases state
   const [cases, setCases] = useState<AppointmentCase[]>([])
@@ -696,31 +704,58 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
 
   // ─── Re-Enroll ──────────────────────────────────────────────────────────────
 
+  const enrollCalcTiers = (base: number) => ({
+    price6:  base,
+    price12: parseFloat((base * 0.85).toFixed(2)),
+    price18: parseFloat((base * 0.75).toFixed(2)),
+  })
+  const enrollFmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+
   const openEnrollModal = async () => {
     setEnrollError(null)
-    setEnrollForm({ productId: '', contactId: '', chargeType: 'deposit', amount: '', durationMonths: null })
+    setEnrollServices([])
+    setEnrollContactId('')
+    setEnrollSetupDeposit({ amount: '' })
+    setEnrollSetupCompl({ amount: '' })
+    setEnrollBaseFee('')
+    setEnrollLifetime(false)
+    setEnrollCalcSavings('')
+    setEnrollCalcSetupPct(12)
+    setEnrollCalcRetainerPct(1.2)
     if (enrollProducts.length === 0) {
       const res = await fetch('/api/products')
       const data = await res.json()
-      const prods: Product[] = (data.products ?? []).map((p: Product) => ({
-        id: p.id,
-        name: p.name,
-        type: p.type,
-        price: p.price,
-      }))
-      setEnrollProducts(prods)
+      setEnrollProducts(data.products ?? [])
     }
     setShowEnrollModal(true)
   }
 
   const handleEnrollSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!enrollForm.productId) return
     setEnrollSaving(true)
     setEnrollError(null)
-    const selectedProduct = enrollProducts.find((p) => p.id === enrollForm.productId)
-    const amount = enrollForm.amount ? parseFloat(enrollForm.amount) : (selectedProduct?.price ?? 0)
-    const selectedContact = contacts.find((c) => c.id === enrollForm.contactId)
+
+    let services: { productId: string; amount: number; chargeType: string; durationMonths?: number }[] = []
+
+    if (enrollLifetime) {
+      const recurringLine = enrollServices.find((s) => s.chargeType === 'recurring')
+      const base = recurringLine?.baseFee ?? 0
+      const tiers = base > 0 ? enrollCalcTiers(base) : null
+      const retainer18Total = tiers ? tiers.price18 * 18 : 0
+      const lifetimePrice = Math.round(retainer18Total * enrollLifetimeMult)
+      const productId = recurringLine?.productId || enrollServices[0]?.productId || ''
+      if (productId && lifetimePrice > 0) {
+        services = [{ productId, amount: lifetimePrice, chargeType: 'deposit' }]
+      }
+    } else {
+      services = enrollServices
+        .filter((s) => s.productId && (parseFloat(s.amount) || 0) > 0)
+        .map((s) => ({ productId: s.productId, amount: parseFloat(s.amount) || 0, chargeType: s.chargeType, durationMonths: s.durationMonths ?? undefined }))
+    }
+
+    if (services.length === 0) { setEnrollError('Configure at least one service.'); setEnrollSaving(false); return }
+
+    const selectedContact = contacts.find((c) => c.id === enrollContactId)
     const res = await fetch('/api/enrollment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -730,12 +765,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
         firstName: selectedContact?.firstName,
         lastName: selectedContact?.lastName,
         email: selectedContact?.email,
-        services: [{
-          productId: enrollForm.productId,
-          amount,
-          chargeType: enrollForm.chargeType,
-          durationMonths: enrollForm.durationMonths ?? undefined,
-        }],
+        services,
       }),
     })
     const data = await res.json()
@@ -828,7 +858,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-gray-50">
       {/* Back nav */}
-      <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-6 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-3 sm:px-6 py-3 flex items-center gap-3">
         <button
           onClick={() => router.push('/companies')}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
@@ -837,12 +867,12 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
         </button>
       </div>
 
-      <div className="flex flex-col gap-4 px-6 py-4">
+      <div className="flex flex-col gap-4 px-3 sm:px-6 py-3 sm:py-4">
 
         {/* ── TOP SECTION: Company Header Card ─────────────────────────────── */}
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="flex items-start gap-4">
-            {/* Left: logo + fields */}
+        <div className="rounded-xl border border-gray-100 bg-white p-4 sm:p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+            {/* Top: logo + fields */}
             <div className="flex flex-1 gap-4 min-w-0">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#0D1B2A] text-xl font-bold text-white">
                 {company.name.charAt(0).toUpperCase()}
@@ -878,7 +908,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
                   )}
                 </div>
                 {/* Last project */}
-                <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <InlineField
                     label="Last Project"
                     value={company.lastProjectSummary}
@@ -897,13 +927,13 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
               </div>
             </div>
 
-            {/* Right: quick actions — 2 left, 3 right */}
-            <div className="flex gap-2 shrink-0">
-              {/* Left column: billing actions */}
-              <div className="flex flex-col gap-2">
+            {/* Quick actions — 2-col grid on mobile, two stacked columns on desktop */}
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2 sm:shrink-0">
+              {/* Billing actions */}
+              <div className="contents sm:flex sm:flex-col sm:gap-2">
                 <button
                   onClick={handleAddCard}
-                                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <CreditCard size={12} /> Add Card
                 </button>
@@ -917,34 +947,34 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
                       setCancelOnBillingLoad(true)
                     }
                   }}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <X size={12} /> Cancel
                 </button>
               </div>
-              {/* Right column: CRM actions */}
-              <div className="flex flex-col gap-2">
+              {/* CRM actions */}
+              <div className="contents sm:flex sm:flex-col sm:gap-2">
                 <button
                   onClick={() => setShowContactSearch(true)}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#0D1B2A] px-3 py-2 text-xs font-medium text-white hover:bg-[#1B263B] transition-colors"
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-[#0D1B2A] px-3 py-2 text-xs font-medium text-white hover:bg-[#1B263B] transition-colors"
                 >
                   <User size={12} /> Add Contact
                 </button>
                 <button
                   onClick={() => { setTaskDueDate(''); setActiveFollowUp(null); setShowTaskModal(true) }}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <CheckCircle2 size={12} /> Add Task
                 </button>
                 <button
                   onClick={openOppModal}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <Briefcase size={12} /> Add Opportunity
                 </button>
                 <button
                   onClick={openEnrollModal}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#415A77] px-3 py-2 text-xs font-medium text-white hover:bg-[#0D1B2A] transition-colors"
+                  className="flex items-center justify-center gap-1.5 col-span-2 sm:col-span-1 rounded-lg bg-[#415A77] px-3 py-2 text-xs font-medium text-white hover:bg-[#0D1B2A] transition-colors"
                 >
                   <RefreshCw size={12} /> Re-Enroll
                 </button>
@@ -954,9 +984,9 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
         </div>
 
         {/* ── MIDDLE SECTION: Contacts + Org Chart ──────────────────────────── */}
-        <div className="flex gap-4" style={{ minHeight: 400 }}>
+        <div className="flex flex-col sm:flex-row gap-4" style={{ minHeight: 400 }}>
           {/* Left: Contacts */}
-          <div className="w-[55%] flex flex-col rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+          <div className="w-full sm:w-[55%] flex flex-col rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-gray-900">Contacts</h2>
@@ -1048,7 +1078,7 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
           </div>
 
           {/* Right: Org Chart */}
-          <div className="w-[45%] flex flex-col rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+          <div className="w-full sm:w-[45%] flex flex-col rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center border-b border-gray-100 px-4 py-3">
               <h2 className="text-sm font-semibold text-gray-900">Org Chart</h2>
             </div>
@@ -1871,156 +1901,346 @@ function CompanyDetailPageInner({ params }: { params: { id: string } }) {
       })()}
 
       {/* Re-Enroll Modal */}
-      {showEnrollModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !enrollSaving && setShowEnrollModal(false)} />
-          <div className="relative w-full max-w-md rounded-2xl bg-white px-6 py-7 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#415A77]/10">
-                  <RefreshCw size={16} className="text-[#415A77]" />
+      {showEnrollModal && (() => {
+        const lblCls = 'mb-1 block text-[10px] font-bold tracking-widest text-[#415A77] uppercase'
+        const fldCls = `${inputClass} text-sm`
+
+        // Setup apply
+        const applyEnrollSetup = () => {
+          const base = parseFloat(enrollBaseFee) || 0
+          const tiers = base > 0 ? enrollCalcTiers(base) : null
+          const oneTimeProduct = enrollProducts.find((p) => p.type !== 'SUBSCRIPTION') ?? enrollProducts[0]
+          const recurringProduct = enrollProducts.find((p) => p.type === 'SUBSCRIPTION') ?? enrollProducts[0]
+          const lines: EnrollSvcLine[] = []
+          if (parseFloat(enrollSetupDeposit.amount) > 0 && oneTimeProduct)
+            lines.push({ uid: Math.random().toString(36).slice(2), productId: oneTimeProduct.id, chargeType: 'deposit', amount: enrollSetupDeposit.amount, durationMonths: null })
+          if (parseFloat(enrollSetupCompl.amount) > 0 && oneTimeProduct)
+            lines.push({ uid: Math.random().toString(36).slice(2), productId: oneTimeProduct.id, chargeType: 'on_completion', amount: enrollSetupCompl.amount, durationMonths: null })
+          if (tiers && recurringProduct)
+            lines.push({ uid: Math.random().toString(36).slice(2), productId: recurringProduct.id, chargeType: 'recurring', durationMonths: 18, amount: String(tiers.price18), baseFee: base })
+          setEnrollServices(lines)
+          setEnrollShowSetup(false)
+        }
+
+        // Derived display values
+        const depositLine    = enrollServices.find((s) => s.chargeType === 'deposit')
+        const completionLine = enrollServices.find((s) => s.chargeType === 'on_completion')
+        const recurringLine  = enrollServices.find((s) => s.chargeType === 'recurring')
+        const base           = recurringLine?.baseFee ?? 0
+        const tiers          = base > 0 ? enrollCalcTiers(base) : null
+        const retainer18Total = tiers ? tiers.price18 * 18 : 0
+        const lifetimePrice  = Math.round(retainer18Total * enrollLifetimeMult)
+
+        const RDUR = tiers ? [
+          { months: 18 as const, label: '18 Months', price: tiers.price18, savings: (base - tiers.price18) * 18, badge: 'Best Value' },
+          { months: 12 as const, label: '12 Months', price: tiers.price12, savings: (base - tiers.price12) * 12, badge: null },
+          { months: 6  as const, label: '6 Months',  price: tiers.price6,  savings: 0, badge: null },
+        ] : []
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !enrollSaving && setShowEnrollModal(false)} />
+            <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#415A77]/10">
+                    <RefreshCw size={16} className="text-[#415A77]" />
+                  </div>
+                  <h2 className="text-base font-bold text-gray-900">Re-Enroll / Add Product</h2>
                 </div>
-                <h2 className="text-base font-bold text-gray-900">Re-Enroll / Add Product</h2>
+                <button onClick={() => setShowEnrollModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                  <X size={16} />
+                </button>
               </div>
-              <button onClick={() => setShowEnrollModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleEnrollSubmit} className="flex flex-col gap-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Product *</label>
-                <select
-                  required
-                  value={enrollForm.productId}
-                  onChange={(e) => {
-                    const prod = enrollProducts.find((p) => p.id === e.target.value)
-                    const isRecurring = prod?.type === 'SUBSCRIPTION'
-                    setEnrollForm((f) => ({
-                      ...f,
-                      productId: e.target.value,
-                      amount: prod ? String(prod.price) : '',
-                      chargeType: isRecurring ? 'recurring' : prod?.type === 'ONE_TIME' ? 'deposit' : f.chargeType,
-                      durationMonths: isRecurring ? (f.durationMonths ?? 12) : null,
-                    }))
-                  }}
-                  className={inputClass}
-                >
-                  <option value="">— Select product —</option>
-                  {enrollProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · ${p.price.toLocaleString()} · {p.type.replace('_', ' ').toLowerCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Contact (optional)</label>
-                <select
-                  value={enrollForm.contactId}
-                  onChange={(e) => setEnrollForm((f) => ({ ...f, contactId: e.target.value }))}
-                  className={inputClass}
-                >
-                  <option value="">— No specific contact —</option>
-                  {contacts.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.firstName} {c.lastName}{c.email ? ` · ${c.email}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {/* Scrollable body */}
+              <div className="overflow-y-auto px-6 py-5 flex flex-col gap-5">
+
+                {/* Contact */}
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Amount ($/mo)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={enrollForm.amount}
-                    onChange={(e) => setEnrollForm((f) => ({ ...f, amount: e.target.value }))}
-                    placeholder="0"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Charge Type</label>
-                  <select
-                    value={enrollForm.chargeType}
-                    onChange={(e) => setEnrollForm((f) => ({ ...f, chargeType: e.target.value as EnrollmentForm['chargeType'], durationMonths: e.target.value === 'recurring' ? (f.durationMonths ?? 12) : null }))}
-                    className={inputClass}
-                  >
-                    <option value="deposit">Deposit (charge now)</option>
-                    <option value="on_completion">On completion</option>
-                    <option value="recurring">Recurring subscription</option>
+                  <label className={lblCls}>Contact (optional)</label>
+                  <select value={enrollContactId} onChange={(e) => setEnrollContactId(e.target.value)} className={fldCls}>
+                    <option value="">— No specific contact —</option>
+                    {contacts.map((c) => (
+                      <option key={c.id} value={c.id}>{c.firstName} {c.lastName}{c.email ? ` · ${c.email}` : ''}</option>
+                    ))}
                   </select>
                 </div>
-              </div>
-              {enrollForm.chargeType === 'recurring' && (
+
+                {/* Services header */}
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-gray-600">Retainer Duration</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {([6, 12, 18] as const).map((months) => {
-                      const prod = enrollProducts.find((p) => p.id === enrollForm.productId)
-                      const tierPrice = months === 6 ? prod?.price6Month : months === 12 ? prod?.price12Month : prod?.price18Month
-                      const isActive = enrollForm.durationMonths === months
-                      return (
-                        <button
-                          key={months}
-                          type="button"
-                          onClick={() => {
-                            setEnrollForm((f) => ({
-                              ...f,
-                              durationMonths: months,
-                              amount: tierPrice ? String(tierPrice) : f.amount,
-                            }))
-                          }}
-                          className="rounded-lg border px-3 py-2.5 text-center transition-all"
-                          style={{
-                            borderColor: isActive ? '#415A77' : '#e5e7eb',
-                            background: isActive ? 'rgba(65,90,119,0.08)' : 'white',
-                            color: isActive ? '#0D1B2A' : '#374151',
-                          }}
-                        >
-                          <div className="text-sm font-semibold">{months} mo</div>
-                          {tierPrice && (
-                            <div className="text-xs mt-0.5" style={{ color: isActive ? '#415A77' : '#9ca3af' }}>
-                              ${tierPrice.toLocaleString()}/mo
-                            </div>
-                          )}
-                        </button>
-                      )
-                    })}
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Services</p>
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                        <div className="relative">
+                          <input type="checkbox" className="sr-only" checked={enrollLifetime} onChange={(e) => setEnrollLifetime(e.target.checked)} />
+                          <div className={`w-7 h-4 rounded-full transition-colors duration-200 ${enrollLifetime ? 'bg-[#415A77]' : 'bg-gray-200'}`} />
+                          <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200 ${enrollLifetime ? 'translate-x-3' : 'translate-x-0'}`} />
+                        </div>
+                        <span className="text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-80">Lifetime</span>
+                      </label>
+                    </div>
+                    <button type="button" onClick={() => setEnrollShowSetup(true)}
+                      className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-[#415A77] uppercase opacity-70 hover:opacity-100 transition-opacity">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Setup
+                    </button>
                   </div>
-                  {enrollForm.durationMonths && enrollForm.amount && (
-                    <p className="mt-1.5 text-xs text-gray-400">
-                      Total: ${(parseFloat(enrollForm.amount) * enrollForm.durationMonths).toLocaleString()} over {enrollForm.durationMonths} months
-                    </p>
+
+                  {/* Service display */}
+                  {enrollServices.length === 0 ? (
+                    <p className="text-xs text-[#8a9bb0]">No services — click Setup to configure.</p>
+                  ) : enrollLifetime ? (
+                    <div className="rounded-xl border-2 border-[#415A77]/30 bg-[#415A77]/5 px-4 py-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Lifetime Access</span>
+                          <span className="text-[10px] font-bold text-white bg-[#415A77] rounded px-1.5 py-0.5">One-Time</span>
+                        </div>
+                      </div>
+                      <p className="text-2xl font-bold text-[#0D1B2A] mb-1">${enrollFmt(lifetimePrice)}</p>
+                      <p className="text-xs text-[#8a9bb0]">one-time payment · never charged again</p>
+                      {retainer18Total > 0 && (
+                        <p className="text-[11px] text-[#8a9bb0] mt-2 pt-2 border-t border-[#415A77]/15">
+                          Based on {enrollLifetimeMult}× your 18-month retainer total of ${enrollFmt(retainer18Total)}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Setup charge card */}
+                      {(depositLine || completionLine) && (() => {
+                        const dep = parseFloat(depositLine?.amount || '0')
+                        const com = parseFloat(completionLine?.amount || '0')
+                        return (
+                          <div className="rounded-xl border border-[#415A77]/15 bg-white/60 px-4 py-3">
+                            <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase mb-1.5">Setup Charge</p>
+                            <p className="text-xl font-bold text-[#0D1B2A]">${enrollFmt(dep + com)}</p>
+                            <div className="flex items-center gap-1.5 text-xs text-[#8a9bb0] mt-0.5">
+                              {depositLine    && <span>${enrollFmt(dep)} upfront</span>}
+                              {depositLine && completionLine && <span>·</span>}
+                              {completionLine && <span>${enrollFmt(com)} upon completion</span>}
+                            </div>
+                          </div>
+                        )
+                      })()}
+                      {/* Monthly retainer card */}
+                      {recurringLine && (
+                        <div className="rounded-xl border border-[#415A77]/15 bg-white/60 overflow-hidden">
+                          <div className="px-4 pt-3 pb-2">
+                            <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase">Monthly Retainer</p>
+                          </div>
+                          <div className="divide-y divide-[#415A77]/8">
+                            {RDUR.map((tier) => {
+                              const isActive = recurringLine.durationMonths === tier.months
+                              const monthsFree = base > 0 && tier.savings > 0 ? Math.round((tier.savings / base) * 10) / 10 : 0
+                              return (
+                                <button key={tier.months} type="button"
+                                  onClick={() => setEnrollServices((prev) => prev.map((s) => s.chargeType === 'recurring' ? { ...s, durationMonths: tier.months, amount: String(tier.price) } : s))}
+                                  className={`w-full text-left py-2.5 transition-all duration-200 border-l-[3px] ${isActive ? 'bg-[#415A77]/[0.07] border-[#415A77] pl-[13px] pr-4' : 'bg-transparent border-transparent px-4 hover:bg-[#415A77]/4'}`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`text-sm font-bold ${isActive ? 'text-[#415A77]' : 'text-[#0D1B2A]'}`}>{tier.label}</span>
+                                        {tier.badge && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">{tier.badge}</span>}
+                                      </div>
+                                      {monthsFree > 0 && <p className="text-[11px] text-[#8a9bb0]">Save ${enrollFmt(tier.savings)} — that&apos;s {monthsFree} months free</p>}
+                                      {tier.months === 6 && <p className="text-[11px] text-[#8a9bb0]">No commitment discount applied</p>}
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <div className="flex items-baseline gap-1.5 justify-end">
+                                        {tier.price < base && <span className="text-xs text-[#b0bac4] line-through">${enrollFmt(base)}/mo</span>}
+                                        {tier.price < base && <svg className="h-3 w-3 text-[#b0bac4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
+                                        <span className={`text-sm font-bold ${isActive ? 'text-[#415A77]' : 'text-[#0D1B2A]'}`}>${enrollFmt(tier.price)}/mo</span>
+                                      </div>
+                                      <p className="text-[11px] text-[#8a9bb0]">${enrollFmt(tier.price * tier.months)} total</p>
+                                    </div>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-              {enrollError && (
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{enrollError}</p>
-              )}
-              <div className="flex justify-end gap-2 border-t border-gray-100 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowEnrollModal(false)}
-                  disabled={enrollSaving}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={enrollSaving || !enrollForm.productId}
-                  className="rounded-lg bg-[#415A77] px-4 py-2 text-sm font-medium text-white hover:bg-[#0D1B2A] disabled:opacity-50 transition-colors"
-                >
-                  {enrollSaving ? 'Enrolling…' : 'Enroll'}
-                </button>
               </div>
-            </form>
+
+              {/* Setup sub-modal */}
+              {enrollShowSetup && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 rounded-2xl" onClick={() => setEnrollShowSetup(false)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-[480px] max-h-[80vh] overflow-y-auto p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between mb-5">
+                      <h3 className="text-sm font-bold text-[#0D1B2A]">Service Setup</h3>
+                      <button type="button" onClick={() => setEnrollShowSetup(false)} className="text-[#8a9bb0] hover:text-[#415A77]">
+                        <X size={16} />
+                      </button>
+                    </div>
+                    {/* Savings Calculator */}
+                    {(() => {
+                      const savings = parseFloat(enrollCalcSavings) || 0
+                      const setupFee = savings > 0 ? Math.round(savings * enrollCalcSetupPct / 100) : 0
+                      const half = Math.round(setupFee / 2)
+                      const retainerBase = savings > 0 ? Math.round(savings * enrollCalcRetainerPct / 100) : 0
+                      const canApply = savings > 0
+                      return (
+                        <div className="mb-4 p-4 rounded-xl border-2 border-[#415A77]/20 bg-[#415A77]/[0.04]">
+                          <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase mb-3">Savings Calculator</p>
+                          <div className="mb-3">
+                            <label className="mb-1 block text-[10px] font-medium text-gray-500">Annual Savings ($)</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                              <input type="number" min="0" step="100" placeholder="0" value={enrollCalcSavings}
+                                onChange={(e) => setEnrollCalcSavings(e.target.value)}
+                                className={`${inputClass} pl-6`} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="mb-1.5 block text-[10px] font-medium text-gray-500">Setup Fee %</label>
+                              <div className="flex rounded-lg border border-[#415A77]/20 overflow-hidden">
+                                {([10, 12, 15] as const).map((p) => (
+                                  <button key={p} type="button" onClick={() => setEnrollCalcSetupPct(p)}
+                                    className={`flex-1 py-1.5 text-[11px] font-bold transition-colors ${enrollCalcSetupPct === p ? 'bg-[#415A77] text-white' : 'text-[#5a6a7e] hover:bg-[#415A77]/5 bg-white'}`}>
+                                    {p}%
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div>
+                              <label className="mb-1.5 block text-[10px] font-medium text-gray-500">Retainer %/mo</label>
+                              <div className="flex rounded-lg border border-[#415A77]/20 overflow-hidden">
+                                {([1, 1.2, 1.5] as const).map((p) => (
+                                  <button key={p} type="button" onClick={() => setEnrollCalcRetainerPct(p)}
+                                    className={`flex-1 py-1.5 text-[11px] font-bold transition-colors ${enrollCalcRetainerPct === p ? 'bg-[#415A77] text-white' : 'text-[#5a6a7e] hover:bg-[#415A77]/5 bg-white'}`}>
+                                    {p}%
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          {canApply && (
+                            <div className="mb-3 rounded-lg bg-white border border-[#415A77]/15 divide-y divide-[#415A77]/10 text-xs">
+                              <div className="flex justify-between px-3 py-2">
+                                <span className="text-[#8a9bb0]">Setup fee ({enrollCalcSetupPct}%)</span>
+                                <span className="font-bold text-[#0D1B2A]">${setupFee.toLocaleString()} <span className="font-normal text-[#8a9bb0]">(${half.toLocaleString()} + ${half.toLocaleString()})</span></span>
+                              </div>
+                              <div className="flex justify-between px-3 py-2">
+                                <span className="text-[#8a9bb0]">Retainer base ({enrollCalcRetainerPct}%/mo)</span>
+                                <span className="font-bold text-[#0D1B2A]">${retainerBase.toLocaleString()}/mo</span>
+                              </div>
+                              <div className="flex justify-between px-3 py-2">
+                                <span className="text-[#8a9bb0]">Client ROI check</span>
+                                <span className="font-bold text-[#0D1B2A]">
+                                  {setupFee + retainerBase * 18 > 0 ? `${(savings / (setupFee + retainerBase * 18)).toFixed(1)}× year-one` : '—'}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          <button type="button" disabled={!canApply}
+                            onClick={() => {
+                              setEnrollSetupDeposit((d) => ({ ...d, amount: String(half) }))
+                              setEnrollSetupCompl((d) => ({ ...d, amount: String(half) }))
+                              setEnrollBaseFee(String(retainerBase))
+                            }}
+                            className="w-full py-2 rounded-lg text-[11px] font-bold tracking-wide transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-[#415A77] text-white hover:bg-[#0D1B2A]">
+                            Apply Calculated Amounts ↓
+                          </button>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Upfront */}
+                    <div className="mb-4 p-4 rounded-xl border border-[#415A77]/15 bg-[#f8fafc]">
+                      <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase mb-2">Upfront Charge</p>
+                      <div>
+                        <label className="mb-1 block text-[10px] font-medium text-gray-500">Amount</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                          <input type="number" min="0" step="0.01" placeholder="0.00" value={enrollSetupDeposit.amount}
+                            onChange={(e) => setEnrollSetupDeposit((d) => ({ ...d, amount: e.target.value }))}
+                            className={`${inputClass} pl-6`} />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Upon Completion */}
+                    <div className="mb-4 p-4 rounded-xl border border-[#415A77]/15 bg-[#f8fafc]">
+                      <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase mb-2">Upon Completion</p>
+                      <div>
+                        <label className="mb-1 block text-[10px] font-medium text-gray-500">Amount</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                          <input type="number" min="0" step="0.01" placeholder="0.00" value={enrollSetupCompl.amount}
+                            onChange={(e) => setEnrollSetupCompl((d) => ({ ...d, amount: e.target.value }))}
+                            className={`${inputClass} pl-6`} />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Monthly Retainer */}
+                    <div className="mb-5 p-4 rounded-xl border border-[#415A77]/15 bg-[#f8fafc]">
+                      <p className="text-[10px] font-bold tracking-widest text-[#415A77] uppercase mb-2">Monthly Retainer</p>
+                      <div>
+                        <label className="mb-1 block text-[10px] font-medium text-gray-500">Base Monthly Fee</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8a9bb0]">$</span>
+                          <input type="number" min="0" step="0.01" value={enrollBaseFee}
+                            onChange={(e) => setEnrollBaseFee(e.target.value)}
+                            placeholder="0.00" className={`${inputClass} pl-6`} />
+                        </div>
+                        <p className="text-[10px] text-[#8a9bb0] mt-1">6 mo = base · 12 mo = 15% off · 18 mo = 25% off</p>
+                      </div>
+                      {(() => {
+                        const bf = parseFloat(enrollBaseFee) || 0
+                        if (!bf) return null
+                        const t = enrollCalcTiers(bf)
+                        return (
+                          <div className="rounded-lg border border-[#415A77]/15 overflow-hidden mt-3">
+                            {([{ months: 6, price: t.price6, discount: null }, { months: 12, price: t.price12, discount: 15 }, { months: 18, price: t.price18, discount: 25 }] as const).map((tier, i) => (
+                              <div key={tier.months} className={`flex justify-between items-center px-3 py-2 text-sm ${i > 0 ? 'border-t border-[#415A77]/10' : ''} ${tier.months === 18 ? 'bg-[#415A77]/5' : ''}`}>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-[#0D1B2A]">{tier.months} mo</span>
+                                  {tier.discount && <span className="text-[10px] text-emerald-600 font-semibold">{tier.discount}% off</span>}
+                                  {tier.months === 18 && <span className="text-[10px] text-[#415A77] font-semibold bg-[#415A77]/10 rounded px-1.5 py-0.5">Default</span>}
+                                </div>
+                                <span className="font-bold text-[#0D1B2A]">${enrollFmt(tier.price)}/mo</span>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
+                    </div>
+                    <button type="button" onClick={applyEnrollSetup}
+                      className="w-full bg-[#415A77] hover:bg-[#0D1B2A] text-white text-sm font-semibold py-2.5 rounded-lg transition-colors">
+                      Apply to Enrollment
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="px-6 pb-5 pt-3 border-t border-gray-100">
+                {enrollError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{enrollError}</p>}
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setShowEnrollModal(false)} disabled={enrollSaving}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={(e) => handleEnrollSubmit(e as unknown as React.FormEvent)} disabled={enrollSaving}
+                    className="rounded-lg bg-[#415A77] px-4 py-2 text-sm font-medium text-white hover:bg-[#0D1B2A] disabled:opacity-50 transition-colors">
+                    {enrollSaving ? 'Enrolling…' : 'Enroll'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Add Case Modal */}
       {showCaseModal && (

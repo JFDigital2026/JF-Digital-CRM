@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, SlidersHorizontal } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { PageHeader } from '@/components/ui/page-header'
@@ -96,6 +96,7 @@ export default function CompaniesPage() {
 
   // Delete state
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
 
   // Create modal state
   const [showCreate, setShowCreate] = useState(false)
@@ -263,18 +264,28 @@ export default function CompaniesPage() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       <PageHeader
         title="Companies"
         subtitle={`${total} total`}
         actions={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1B263B]"
-          >
-            <Plus size={15} />
-            New Company
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMobileFilterOpen(true)}
+              className="lg:hidden flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 bg-white"
+            >
+              <SlidersHorizontal size={14} />
+              Filters
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1B263B]"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">New Company</span>
+              <span className="sm:hidden">New</span>
+            </button>
+          </div>
         }
       />
 
@@ -287,17 +298,16 @@ export default function CompaniesPage() {
         />
       </div>
 
-      <div className="flex gap-4">
-        {/* Filter sidebar */}
-        <div className="w-56 shrink-0">
-          <FilterSidebar
-            sections={FILTER_SECTIONS}
-            value={filters}
-            onChange={handleFilterChange}
-            onClearAll={handleClearAllFilters}
-          />
-        </div>
+      <FilterSidebar
+        sections={FILTER_SECTIONS}
+        value={filters}
+        onChange={handleFilterChange}
+        onClearAll={handleClearAllFilters}
+        mobileOpen={mobileFilterOpen}
+        onMobileClose={() => setMobileFilterOpen(false)}
+      />
 
+      <div className="flex gap-4">
         {/* Data table */}
         <div className="min-w-0 flex-1">
           <DataTable

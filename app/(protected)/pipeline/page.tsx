@@ -433,7 +433,7 @@ export default function PipelinePage() {
       {/* Main kanban area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+        <div className="border-b border-gray-100 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             {/* Pipeline selector on left */}
             <select
@@ -448,7 +448,7 @@ export default function PipelinePage() {
               <p className="text-sm text-gray-500">{opportunities.length} deals · ${pipelineTotal.toLocaleString()} total</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
             {/* Pipeline settings */}
             <button
               onClick={openSettings}
@@ -494,23 +494,25 @@ export default function PipelinePage() {
             {/* Add Deal (secondary style) */}
             <button
               onClick={() => { setNewDealStageId(activePipeline?.stages[0]?.id ?? ''); setShowNewDeal(true) }}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              <Plus size={15} /> Add Deal
+              <Plus size={15} />
+              <span className="hidden sm:inline">Add Deal</span>
             </button>
             {/* Add View (primary) */}
             <button
               onClick={() => setShowAddView(true)}
-              className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1B263B]"
+              className="flex items-center gap-1.5 rounded-lg bg-[#0D1B2A] px-2.5 py-2 text-sm font-medium text-white hover:bg-[#1B263B]"
             >
-              <Plus size={15} /> Add View
+              <Plus size={15} />
+              <span className="hidden sm:inline">Add View</span>
             </button>
           </div>
         </div>
 
         {/* Filter bar */}
         {showFilters && (
-          <div className="border-b border-gray-100 bg-gray-50 px-6 py-3 flex items-center gap-4 flex-wrap">
+          <div className="border-b border-gray-100 bg-gray-50 px-3 sm:px-6 py-3 flex items-center gap-3 sm:gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-gray-500 whitespace-nowrap">Close date</label>
               <input type="date" value={filterCloseDateFrom} onChange={(e) => setFilterCloseDateFrom(e.target.value)}
@@ -549,7 +551,7 @@ export default function PipelinePage() {
           {viewMode === 'kanban' ? (
           <>
           {/* Kanban columns */}
-          <div className="flex flex-1 gap-3 overflow-x-auto px-6 py-4 min-h-0">
+          <div className="flex flex-1 gap-3 overflow-x-auto px-3 sm:px-6 py-3 sm:py-4 min-h-0">
             {activePipeline?.stages.map((stage) => {
               const cards = oppsByStage(stage.id)
               const val = stageValue(stage.id)
@@ -652,8 +654,8 @@ export default function PipelinePage() {
           </div>
 
           {/* Won / Abandoned / Lost drop zones */}
-          <div className="shrink-0 border-t border-gray-100 bg-white px-6 py-3">
-            <div className="flex items-center gap-2">
+          <div className="shrink-0 border-t border-gray-100 bg-white px-3 sm:px-6 py-2 sm:py-3">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
               <span className="text-xs font-semibold uppercase tracking-wide text-gray-400 mr-2">Drop to mark:</span>
               {(
                 [
@@ -685,7 +687,7 @@ export default function PipelinePage() {
           </>
           ) : (
             /* List view */
-            <div className="flex-1 overflow-auto px-6 py-4">
+            <div className="flex-1 overflow-auto px-3 sm:px-6 py-3 sm:py-4">
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <DataTable<any>
                 columns={listColumns as any}
