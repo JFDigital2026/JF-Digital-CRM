@@ -4,6 +4,7 @@ import { Resend } from 'resend'
 import { triggerAutomation } from '@/lib/automation-engine'
 import { rateLimit, getIp } from '@/lib/rate-limit'
 import { createZoomMeeting } from '@/lib/zoom'
+import { createRescheduleToken } from '@/lib/reschedule-token'
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
@@ -178,6 +179,9 @@ export async function POST(req: Request) {
     }
   }
 
+  const rescheduleToken = createRescheduleToken(event.id, config.slug)
+  const rescheduleUrl = `${process.env.NEXTAUTH_URL ?? ''}/reschedule/${rescheduleToken}`
+
   // Emails via Resend (non-fatal)
   if (process.env.RESEND_API_KEY) {
     try {
@@ -187,10 +191,12 @@ export async function POST(req: Request) {
 
       const dateDisplay = startTime.toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        timeZone: 'America/New_York',
       })
       const timeDisplay = startTime.toLocaleTimeString('en-US', {
         hour: '2-digit', minute: '2-digit',
-      })
+        timeZone: 'America/New_York',
+      }) + ' ET'
 
       const zoomClientBlock = zoomJoinUrl ? `
             <tr><td style="padding:6px 0;">
@@ -209,60 +215,37 @@ export async function POST(req: Request) {
         </td></tr>` : ''
 
       // ── Client confirmation email ────────────────────────────────────────
-      const clientHtml = `
-<!DOCTYPE html>
+      const zoomLine = zoomJoinUrl
+        ? `<p style="margin:0 0 6px;color:#111827;font-size:15px;">📞 <a href="${zoomJoinUrl}" style="color:#1d4ed8;">${zoomJoinUrl}</a></p>`
+        : `<p style="margin:0 0 6px;color:#111827;font-size:15px;">📞 Details to follow</p>`
+
+      const clientHtml = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:#1a2535;padding:28px 36px;">
-            <p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:-0.3px;">JF Digital</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:36px;">
-            <p style="margin:0 0 6px;color:#4b6070;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Booking Confirmed</p>
-            <h1 style="margin:0 0 24px;color:#1a2535;font-size:24px;font-weight:700;">${config.name}</h1>
-
-            <table cellpadding="0" cellspacing="0" style="background:#f4f6f8;border-radius:8px;padding:20px 24px;width:100%;margin-bottom:24px;">
-              <tr>
-                <td style="padding:6px 0;">
-                  <p style="margin:0;color:#6b7d8e;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Date &amp; Time</p>
-                  <p style="margin:4px 0 0;color:#1a2535;font-size:15px;font-weight:600;">${dateDisplay} at ${timeDisplay}</p>
-                </td>
-              </tr>
-              <tr><td style="padding:6px 0;">
-                <p style="margin:0;color:#6b7d8e;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Duration</p>
-                <p style="margin:4px 0 0;color:#1a2535;font-size:15px;font-weight:600;">${config.duration} minutes</p>
-              </td></tr>
-              ${zoomClientBlock}
-            </table>
-
-            ${config.confirmationMessage ? `<p style="margin:0 0 24px;color:#4a5568;font-size:14px;line-height:1.6;">${config.confirmationMessage}</p>` : ''}
-
-            <p style="margin:0 0 6px;color:#4a5568;font-size:14px;line-height:1.6;">
-              Hi ${firstName}, your appointment has been confirmed.${zoomJoinUrl ? ' Use the Zoom link above to join the call.' : ''} If anything changes, please reach out as soon as possible so we can reschedule.
-            </p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:20px 36px;border-top:1px solid #edf0f3;">
-            <p style="margin:0;color:#9ca3af;font-size:12px;">JF Digital &middot; jf-digital.com</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
+<body style="margin:0;padding:40px 20px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+    <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;padding:40px 48px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <tr><td style="color:#111827;font-size:15px;line-height:1.75;">
+        <p style="margin:0 0 16px;">Hey ${firstName},</p>
+        <p style="margin:0 0 20px;">Our call is confirmed. Here are the details:</p>
+        <p style="margin:0 0 6px;color:#111827;font-size:15px;">📅 ${dateDisplay}</p>
+        <p style="margin:0 0 6px;color:#111827;font-size:15px;">🕐 ${timeDisplay}</p>
+        ${zoomLine}
+        <p style="margin:24px 0;color:#374151;font-size:15px;line-height:1.75;">I'll ask a few questions about how your business runs day to day &mdash; where time is being lost, what's slowing your team down, and what's still being done manually. From there I'll give you a straight answer on whether automation makes sense and what it would actually look like.</p>
+        <p style="margin:0 0 32px;"><a href="${rescheduleUrl}" style="color:#6b7280;font-size:14px;">Need to reschedule?</a></p>
+        <p style="margin:0 0 2px;color:#111827;font-size:15px;">Talk soon,</p>
+        <p style="margin:0 0 2px;color:#111827;font-size:15px;font-weight:600;">Jace</p>
+        <p style="margin:0;color:#6b7280;font-size:13px;">JF Digital</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
 </body>
 </html>`
 
       await resend.emails.send({
         from,
         to: email,
-        subject: `Confirmed: ${config.name} on ${dateDisplay}`,
+        subject: `Your call is confirmed`,
         html: clientHtml,
       })
 
