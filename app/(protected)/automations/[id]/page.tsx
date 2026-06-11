@@ -2,12 +2,12 @@
 
 export const dynamic = 'force-dynamic'
 
-import dynamic from 'next/dynamic'
+import nextDynamic from 'next/dynamic'
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { CopyEditorSlideOver } from '@/components/automations/copy-editor-slideover'
 
-const FlowDiagram = dynamic(
+const FlowDiagram = nextDynamic(
   () => import('@/components/automations/flow-diagram').then((m) => ({ default: m.FlowDiagram })),
   {
     loading: () => <div className="flex-1 animate-pulse rounded-xl bg-gray-100" />,
