@@ -3,8 +3,7 @@ ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'MANAGER';
 ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'SALES_REP';
 ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'SUPPORT';
 
--- Fix User.role default + add Google OAuth fields
-ALTER TABLE "User" ALTER COLUMN "role" SET DEFAULT 'SALES_REP';
+-- Add Google OAuth fields to User
 ALTER TABLE "User"
   ADD COLUMN IF NOT EXISTS "googleAccessToken"   TEXT,
   ADD COLUMN IF NOT EXISTS "googleRefreshToken"  TEXT,

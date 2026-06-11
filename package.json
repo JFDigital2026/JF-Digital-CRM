@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 4000",
     "build": "prisma generate && next build",
-    "start": "npx prisma migrate resolve --rolled-back 20260610000001_add_appointment_cases || true && npx prisma migrate deploy && next start -p ${PORT:-4000}",
+    "start": "npx prisma migrate resolve --rolled-back 20260607193528_baseline_schema || true && npx prisma migrate resolve --rolled-back 20260610000001_add_appointment_cases || true && npx prisma migrate deploy && next start -p ${PORT:-4000}",
     "postinstall": "prisma generate",
     "lint": "next lint",
     "db:migrate": "prisma migrate deploy",
