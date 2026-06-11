@@ -59,6 +59,48 @@ async function main() {
   } else {
     console.log('Sample pipeline already exists, skipping.')
   }
+
+  // ─── Default products ──────────────────────────────────────────────────────
+  const existingSetupFee = await prisma.product.findFirst({
+    where: { userId: admin.id, name: 'Setup Fee' },
+  })
+
+  if (!existingSetupFee) {
+    await prisma.product.create({
+      data: {
+        name: 'Setup Fee',
+        description: 'One-time setup charge',
+        type: 'ONE_TIME',
+        price: 0,
+        active: true,
+        userId: admin.id,
+      },
+    })
+    console.log('Created product: Setup Fee')
+  } else {
+    console.log('Setup Fee product already exists, skipping.')
+  }
+
+  const existingRetainer = await prisma.product.findFirst({
+    where: { userId: admin.id, name: 'Monthly Retainer' },
+  })
+
+  if (!existingRetainer) {
+    await prisma.product.create({
+      data: {
+        name: 'Monthly Retainer',
+        description: 'Recurring monthly service retainer',
+        type: 'SUBSCRIPTION',
+        price: 0,
+        interval: 'MONTHLY',
+        active: true,
+        userId: admin.id,
+      },
+    })
+    console.log('Created product: Monthly Retainer')
+  } else {
+    console.log('Monthly Retainer product already exists, skipping.')
+  }
 }
 
 main()
