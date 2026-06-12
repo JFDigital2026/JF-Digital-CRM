@@ -142,7 +142,10 @@ function LeftPanel({
 
       {/* Description */}
       {config.description && (
-        <p className="mt-5 text-sm text-[#6b7d8e] leading-relaxed">{config.description}</p>
+        <div
+          className="mt-5 text-sm text-[#6b7d8e] leading-relaxed prose prose-sm max-w-none"
+          dangerouslySetInnerHTML={{ __html: config.description }}
+        />
       )}
     </div>
   )
