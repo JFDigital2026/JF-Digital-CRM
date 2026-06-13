@@ -15,7 +15,10 @@ export async function GET(
       type: true,
       duration: true,
       timezone: true,
+      description: true,
       confirmationMessage: true,
+      dateRange: true,
+      dateRangeUnit: true,
       active: true,
     },
   })

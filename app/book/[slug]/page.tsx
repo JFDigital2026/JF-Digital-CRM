@@ -26,6 +26,8 @@ type CalendarConfig = {
   timezone: string
   description?: string | null
   confirmationMessage?: string | null
+  dateRange?: number | null
+  dateRangeUnit?: string | null
 }
 
 type BookedEvent = {
@@ -157,10 +159,12 @@ function Calendar({
   selectedDate,
   onDateClick,
   loadingDate,
+  maxDate,
 }: {
   selectedDate: string
   onDateClick: (day: Date) => void
   loadingDate: string | null
+  maxDate?: Date | null
 }) {
   const today = new Date()
   const [viewMonth, setViewMonth] = useState(today)
@@ -172,6 +176,11 @@ function Calendar({
   const canGoPrev =
     viewMonth.getFullYear() > today.getFullYear() ||
     viewMonth.getMonth() > today.getMonth()
+
+  const canGoNext = maxDate
+    ? viewMonth.getFullYear() < maxDate.getFullYear() ||
+      (viewMonth.getFullYear() === maxDate.getFullYear() && viewMonth.getMonth() < maxDate.getMonth())
+    : true
 
   return (
     <div className="min-w-[340px]">
@@ -191,7 +200,8 @@ function Calendar({
         </span>
         <button
           onClick={() => setViewMonth((m) => addMonths(m, 1))}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d8dde3] text-[#4a5568] hover:bg-[#c8d0d8] transition-colors"
+          disabled={!canGoNext}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d8dde3] text-[#4a5568] hover:bg-[#c8d0d8] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -212,6 +222,7 @@ function Calendar({
       <div className="grid grid-cols-7">
         {days.map((day) => {
           const isPast = isBefore(day, today) && !isToday(day)
+          const isBeyondMax = maxDate ? isBefore(maxDate, day) : false
           const isOutside = !isSameMonth(day, viewMonth)
           const isSelected = selectedDate
             ? isSameDay(day, new Date(selectedDate + 'T12:00:00'))
@@ -226,13 +237,13 @@ function Calendar({
           return (
             <div key={day.toString()} className="flex flex-col items-center py-1">
               <button
-                disabled={isPast}
+                disabled={isPast || isBeyondMax}
                 onClick={() => onDateClick(day)}
                 className={[
                   'relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium transition-colors',
                   isSelected
                     ? 'bg-[#4b6070] text-white'
-                    : isPast
+                    : isPast || isBeyondMax
                     ? 'text-[#c0c8d0] cursor-not-allowed'
                     : 'text-[#4a7fa8] hover:bg-[#4a7fa8]/10 cursor-pointer',
                   isLoading ? 'opacity-60' : '',
@@ -608,6 +619,15 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
 
   const timezone = getBrowserTimezone()
 
+  const maxDate = (() => {
+    if (!config?.dateRange) return null
+    const unit = config.dateRangeUnit ?? 'days'
+    const ms = unit === 'hours'
+      ? config.dateRange * 60 * 60 * 1000
+      : config.dateRange * 24 * 60 * 60 * 1000
+    return new Date(Date.now() + ms)
+  })()
+
   useEffect(() => {
     async function loadConfig() {
       try {
@@ -707,6 +727,7 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
                 selectedDate={selectedDate}
                 onDateClick={handleDateClick}
                 loadingDate={loadingDate}
+                maxDate={maxDate}
               />
             </div>
 
