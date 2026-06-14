@@ -331,7 +331,7 @@ model Contact {
   companyId    String?
   leadStatus   String     @default("NEW")
   source       String?
-  tags         String[]
+  tags         String[]   @default([])
   doNotContact Boolean    @default(false)
   avatarUrl    String?
   notes        String?

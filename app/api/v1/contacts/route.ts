@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({}))
-  const { firstName, lastName, email, phone, companyId, leadStatus, notes } = body
+  const { firstName, lastName, email, phone, companyId, leadStatus, notes, source, tags } = body
 
   if (!firstName) return err('VALIDATION_ERROR', 'firstName is required')
 
@@ -56,9 +56,31 @@ export async function POST(req: Request) {
       companyId: companyId ?? null,
       leadStatus: leadStatus ?? 'NEW',
       notes: notes ?? null,
+      source: source ?? null,
+      tags: Array.isArray(tags) ? tags : [],
     },
     include: { company: { select: { id: true, name: true } } },
   })
+
+  // Auto-enroll in first pipeline stage (matches in-app behavior)
+  try {
+    const pipeline = await prisma.pipeline.findFirst({
+      where: {},
+      include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
+      orderBy: { createdAt: 'asc' },
+    })
+    if (pipeline?.stages.length) {
+      await prisma.opportunity.create({
+        data: {
+          title: `${contact.firstName} ${contact.lastName}`,
+          contactId: contact.id,
+          companyId: companyId ?? null,
+          stageId: pipeline.stages[0].id,
+          pipelineId: pipeline.id,
+        },
+      })
+    }
+  } catch {}
 
   fireWebhook(auth.userId, 'contact.created', { contactId: contact.id, firstName, lastName, email })
 
