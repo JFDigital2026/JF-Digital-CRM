@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Copy, Check, RefreshCw, Key, Globe, Webhook, Eye, EyeOff, AlertTriangle, ChevronDown } from 'lucide-react'
+import { Copy, Check, Key, Globe, Webhook, Eye, EyeOff, AlertTriangle, ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { cn } from '@/lib/utils'
 
@@ -81,9 +81,11 @@ export default function ApiSettingsPage() {
   const [webhooks, setWebhooks] = useState<WebhookEndpoint[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [showNewForm, setShowNewForm] = useState(false)
+  const [newKeyName, setNewKeyName] = useState('')
+  const [newKeyValue, setNewKeyValue] = useState<{ key: string; name: string } | null>(null)
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
   const [showWebhooks, setShowWebhooks] = useState(false)
-  const [newKey, setNewKey] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const baseUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/v1`
@@ -107,44 +109,32 @@ export default function ApiSettingsPage() {
 
   useEffect(() => { load() }, [load])
 
-  const activeKey = keys.find((k) => k.active)
-
   async function generate() {
+    const name = newKeyName.trim() || 'API Key'
     setGenerating(true)
     try {
       const res = await fetch('/api/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'My API Key' }),
+        body: JSON.stringify({ name }),
       })
       const data = await res.json()
-      setNewKey(data.key)
+      setNewKeyValue({ key: data.key, name })
+      setNewKeyName('')
+      setShowNewForm(false)
       await load()
     } finally {
       setGenerating(false)
     }
   }
 
-  async function revokeAndRegenerate() {
-    setGenerating(true)
-    try {
-      // Revoke all existing active keys
-      for (const k of keys.filter((k) => k.active)) {
-        await fetch(`/api/api-keys/${k.id}`, { method: 'DELETE' })
-      }
-      const res = await fetch('/api/api-keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'My API Key' }),
-      })
-      const data = await res.json()
-      setNewKey(data.key)
-      await load()
-    } finally {
-      setGenerating(false)
-      setConfirmDelete(null)
-    }
+  async function revoke(id: string) {
+    await fetch(`/api/api-keys/${id}`, { method: 'DELETE' })
+    setConfirmRevoke(null)
+    await load()
   }
+
+  const activeKeys = keys.filter((k) => k.active)
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -153,85 +143,137 @@ export default function ApiSettingsPage() {
         subtitle="Connect your CRM to Zapier, Make, n8n, or any custom tool."
       />
 
-      {/* API Key section */}
+      {/* New key reveal banner */}
+      {newKeyValue && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-xs text-amber-700 font-medium">
+              Copy <strong>{newKeyValue.name}</strong> now — it won&apos;t be shown again.
+            </p>
+          </div>
+          <CopyField label="New API Key" value={newKeyValue.key} masked />
+          <button
+            onClick={() => setNewKeyValue(null)}
+            className="text-xs text-amber-600 hover:text-amber-800 underline"
+          >
+            I&apos;ve copied it
+          </button>
+        </div>
+      )}
+
+      {/* API Keys section */}
       <div className="rounded-2xl border border-gray-100 bg-white p-5 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-[#0D1B2A] flex items-center justify-center shrink-0">
-            <Key size={16} className="text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-[#0D1B2A] flex items-center justify-center shrink-0">
+              <Key size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">API Keys</p>
+              <p className="text-xs text-gray-500">Each key can be used independently. Revoke one without affecting others.</p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900">API Key</p>
-            <p className="text-xs text-gray-500">Use this in the Authorization header of every request.</p>
-          </div>
+          <button
+            onClick={() => { setShowNewForm((v) => !v); setNewKeyName('') }}
+            className="flex items-center gap-1.5 rounded-xl bg-[#0D1B2A] px-3 py-2 text-xs font-medium text-white hover:bg-[#1B263B] transition-colors"
+          >
+            <Plus size={13} />
+            New Key
+          </button>
         </div>
 
-        {loading ? (
-          <div className="h-12 rounded-xl bg-gray-100 animate-pulse" />
-        ) : newKey ? (
-          <div className="space-y-3">
-            <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 p-3">
-              <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-700 font-medium">Copy this key now — it won't be shown again after you leave this page.</p>
-            </div>
-            <CopyField label="Your API Key" value={newKey} masked />
-          </div>
-        ) : activeKey ? (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500">Your API Key</p>
-              <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                <span className="flex-1 text-sm font-mono text-gray-400 tracking-widest select-none">
-                  crm_{'•'.repeat(20)}
-                </span>
-                <span className="text-[10px] text-gray-400 italic shrink-0">Regenerate to reveal a new key</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2">
-              <span className="text-gray-400">Last used:</span>
-              <span className="font-medium text-gray-700">
-                {activeKey.lastUsed ? new Date(activeKey.lastUsed).toLocaleDateString() : 'Never'}
-              </span>
-              <span className="mx-1 text-gray-200">·</span>
-              <span className="text-gray-400">{activeKey._count.logs} total requests</span>
-            </div>
-            {confirmDelete === 'regen' ? (
-              <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 p-3">
-                <p className="flex-1 text-xs text-red-700">Current key will stop working immediately. Continue?</p>
-                <button
-                  onClick={revokeAndRegenerate}
-                  disabled={generating}
-                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                >
-                  {generating ? 'Regenerating…' : 'Yes, regenerate'}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(null)}
-                  className="rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmDelete('regen')}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-              >
-                <RefreshCw size={12} />
-                Regenerate key
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-4">
-            <p className="text-sm text-gray-500 mb-3">No API key yet.</p>
+        {/* New key form */}
+        {showNewForm && (
+          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <input
+              type="text"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && generate()}
+              placeholder="Key name (e.g. Cloudflare Worker, Zapier)"
+              className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none"
+              autoFocus
+            />
             <button
               onClick={generate}
               disabled={generating}
-              className="flex items-center gap-2 mx-auto rounded-xl bg-[#0D1B2A] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1B263B] disabled:opacity-50 transition-colors"
+              className="rounded-lg bg-[#0D1B2A] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1B263B] disabled:opacity-50 transition-colors shrink-0"
+            >
+              {generating ? 'Generating…' : 'Generate'}
+            </button>
+            <button
+              onClick={() => setShowNewForm(false)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Key list */}
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => <div key={i} className="h-14 rounded-xl bg-gray-100 animate-pulse" />)}
+          </div>
+        ) : activeKeys.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-sm text-gray-400 mb-3">No API keys yet.</p>
+            <button
+              onClick={() => setShowNewForm(true)}
+              className="flex items-center gap-2 mx-auto rounded-xl bg-[#0D1B2A] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1B263B] transition-colors"
             >
               <Key size={14} />
-              {generating ? 'Generating…' : 'Generate API Key'}
+              Generate your first key
             </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {activeKeys.map((k) => (
+              <div key={k.id} className="py-3 first:pt-0 last:pb-0">
+                {confirmRevoke === k.id ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5">
+                    <p className="flex-1 text-xs text-red-700">Revoke <strong>{k.name}</strong>? Any app using this key will break immediately.</p>
+                    <button
+                      onClick={() => revoke(k.id)}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors shrink-0"
+                    >
+                      Revoke
+                    </button>
+                    <button
+                      onClick={() => setConfirmRevoke(null)}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{k.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {k._count.logs} requests ·{' '}
+                        {k.lastUsed ? `Last used ${new Date(k.lastUsed).toLocaleDateString()}` : 'Never used'} ·{' '}
+                        Created {new Date(k.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Active
+                      </span>
+                      <button
+                        onClick={() => setConfirmRevoke(k.id)}
+                        className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-500 hover:border-red-200 hover:text-red-600 transition-colors"
+                        title="Revoke key"
+                      >
+                        <Trash2 size={12} />
+                        Revoke
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -256,7 +298,7 @@ export default function ApiSettingsPage() {
         </div>
       </div>
 
-      {/* Webhook secrets — collapsed by default */}
+      {/* Webhook secrets */}
       <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
         <button
           onClick={() => setShowWebhooks((v) => !v)}
@@ -275,7 +317,7 @@ export default function ApiSettingsPage() {
         {showWebhooks && (
           <div className="border-t border-gray-50 p-4 space-y-3">
             <p className="text-xs text-gray-500">
-              When your CRM sends an event to an outside URL (Zapier, Make, your own server), it signs the request with this secret so the receiver can verify it's genuine. You only need this if you&apos;ve configured an outbound webhook.
+              When your CRM sends an event to an outside URL, it signs the request with this secret so the receiver can verify it&apos;s genuine.
             </p>
             {loading ? (
               <div className="h-10 rounded-xl bg-gray-100 animate-pulse" />
