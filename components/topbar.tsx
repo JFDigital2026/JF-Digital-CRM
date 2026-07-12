@@ -58,6 +58,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         className="flex shrink-0 items-center gap-2 sm:gap-4 px-3 sm:px-6"
         style={{
           height: 60,
+          position: 'relative',
+          // backdrop-filter creates a stacking context; without an explicit
+          // z-index the header sits at the same level as page panels (which also
+          // use backdrop-filter) and its notification dropdown paints behind them.
+          // Elevate the whole header context above content so the dropdown wins.
+          zIndex: 30,
           background: 'rgba(255,255,255,0.65)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
