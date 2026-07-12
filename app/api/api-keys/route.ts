@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hashApiKey } from '@/lib/api-v1/auth'
 import { randomBytes } from 'crypto'
+import { requirePermission } from '@/lib/permissions'
 
 const FULL_SCOPES = [
   'contacts:read', 'contacts:write',
@@ -15,12 +14,18 @@ const FULL_SCOPES = [
   'products:read', 'automations:trigger', 'metrics:read',
 ]
 
+const READ_ONLY_SCOPES = [
+  'contacts:read', 'companies:read', 'opportunities:read',
+  'tasks:read', 'calendar:read', 'messages:read',
+  'products:read', 'metrics:read',
+]
+
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('settings', 'manageApi')
+  if (!auth.ok) return auth.response
 
   const keys = await prisma.apiKey.findMany({
-    where: { userId: session.user.id },
+    where: { userId: auth.session.user.id },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -37,18 +42,29 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('settings', 'manageApi')
+  if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({}))
   const name = body.name ?? 'API Key'
-  const scopes = Array.isArray(body.scopes) && body.scopes.length > 0 ? body.scopes : FULL_SCOPES
+
+  // Least privilege by default. Explicit scopes are filtered to the known set
+  // (blocks '*' or arbitrary values); full access is opt-in via fullAccess.
+  let scopes: string[]
+  if (Array.isArray(body.scopes) && body.scopes.length > 0) {
+    scopes = body.scopes.filter((s: unknown) => typeof s === 'string' && FULL_SCOPES.includes(s))
+    if (scopes.length === 0) scopes = READ_ONLY_SCOPES
+  } else if (body.fullAccess === true) {
+    scopes = FULL_SCOPES
+  } else {
+    scopes = READ_ONLY_SCOPES
+  }
 
   const rawKey = 'crm_' + randomBytes(24).toString('hex')
   const hashedKey = hashApiKey(rawKey)
 
   const apiKey = await prisma.apiKey.create({
-    data: { name, hashedKey, userId: session.user.id, scopes },
+    data: { name, hashedKey, userId: auth.session.user.id, scopes },
   })
 
   return NextResponse.json({

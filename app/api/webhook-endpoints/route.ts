@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { randomBytes } from 'crypto'
+import { validateWebhookUrlSync } from '@/lib/ssrf'
 
 export async function GET() {
   try {
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
 
     const { url, events } = await req.json()
     if (!url) return NextResponse.json({ error: 'url is required' }, { status: 400 })
+    const urlCheck = validateWebhookUrlSync(String(url))
+    if (!urlCheck.ok) return NextResponse.json({ error: urlCheck.reason }, { status: 400 })
     if (!Array.isArray(events) || events.length === 0) {
       return NextResponse.json({ error: 'events array is required' }, { status: 400 })
     }

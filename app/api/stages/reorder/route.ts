@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission } from '@/lib/permissions'
 
 export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'managePipelines')
+  if (!auth.ok) return auth.response
 
   const body = await req.json()
   const { stages } = body as { stages: Array<{ id: string; order: number }> }
@@ -14,7 +13,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'stages must be an array' }, { status: 400 })
   }
 
-  await Promise.all(
+  // One transaction so a bad row can't leave ordering half-applied.
+  await prisma.$transaction(
     stages.map((s) =>
       prisma.stage.update({
         where: { id: s.id },

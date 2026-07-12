@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { assertPublicWebhookUrl } from '@/lib/ssrf'
 
 function sign(payload: string, secret: string): string {
   return 'sha256=' + createHmac('sha256', secret).update(payload).digest('hex')
@@ -18,6 +19,25 @@ async function deliver(
 
   let statusCode: number | null = null
   let success = false
+
+  // SSRF guard: re-validate (incl. DNS) immediately before the outbound request,
+  // so a URL that resolves to an internal address is never fetched — even if it
+  // passed the structural check when it was created.
+  try {
+    await assertPublicWebhookUrl(url)
+  } catch (e) {
+    await prisma.webhookLog.create({
+      data: {
+        webhookEndpointId: endpointId,
+        event,
+        payload: payload as import('@prisma/client').Prisma.InputJsonValue,
+        statusCode: null,
+        attempt,
+        success: false,
+      },
+    }).catch(() => {})
+    return
+  }
 
   try {
     const res = await fetch(url, {

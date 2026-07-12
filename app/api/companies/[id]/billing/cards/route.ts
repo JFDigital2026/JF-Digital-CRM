@@ -1,26 +1,23 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { stripe, stripeReady } from '@/lib/stripe'
-
-async function getCustomerId(companyId: string) {
-  const company = await prisma.company.findUnique({
-    where: { id: companyId },
-    select: { stripeCustomerId: true },
-  })
-  return company?.stripeCustomerId ?? null
-}
+import { requirePermission } from '@/lib/permissions'
+import { getCompanyCustomerId, paymentMethodBelongsToCompany } from '@/lib/billing-auth'
 
 // DELETE — detach a card
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('billing', 'manage')
+  if (!auth.ok) return auth.response
   if (!stripeReady()) return NextResponse.json({ error: 'Stripe not configured' }, { status: 503 })
 
   try {
     const { paymentMethodId } = await req.json()
     if (!paymentMethodId) return NextResponse.json({ error: 'paymentMethodId required' }, { status: 400 })
+
+    // Ensure the card actually belongs to this company before detaching.
+    if (!(await paymentMethodBelongsToCompany(params.id, paymentMethodId))) {
+      return NextResponse.json({ error: 'Payment method not found for this company' }, { status: 404 })
+    }
 
     await stripe.paymentMethods.detach(paymentMethodId)
     return NextResponse.json({ ok: true })
@@ -32,16 +29,23 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
 // PATCH — make primary OR update expiry
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('billing', 'manage')
+  if (!auth.ok) return auth.response
   if (!stripeReady()) return NextResponse.json({ error: 'Stripe not configured' }, { status: 503 })
 
   try {
     const body = await req.json()
     const { action, paymentMethodId, expMonth, expYear } = body
 
+    if (!paymentMethodId) return NextResponse.json({ error: 'paymentMethodId required' }, { status: 400 })
+
+    // Every mutation targets a payment method — verify ownership up front.
+    if (!(await paymentMethodBelongsToCompany(params.id, paymentMethodId))) {
+      return NextResponse.json({ error: 'Payment method not found for this company' }, { status: 404 })
+    }
+
     if (action === 'make_primary') {
-      const customerId = await getCustomerId(params.id)
+      const customerId = await getCompanyCustomerId(params.id)
       if (!customerId) return NextResponse.json({ error: 'No Stripe customer' }, { status: 404 })
 
       await stripe.customers.update(customerId, {

@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission } from '@/lib/permissions'
+import { toInt } from '@/lib/utils'
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('companies', 'view')
+  if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search') ?? ''
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
-  const pageSize = Math.min(100, parseInt(searchParams.get('pageSize') ?? '25'))
+  const page = toInt(searchParams.get('page'), 1, { min: 1 })
+  const pageSize = toInt(searchParams.get('pageSize'), 25, { min: 1, max: 100 })
   const typeahead = searchParams.get('typeahead') === 'true'
 
   // Typeahead mode: return minimal data for autocomplete
@@ -106,8 +106,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('companies', 'create')
+  if (!auth.ok) return auth.response
 
   const body = await req.json()
   const { name, website, industry, companySize, address, city, state, zip, country, timezone, notes } = body

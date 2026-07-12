@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
+import { checkPermission } from '@/lib/permissions'
+import { getPresetForRole } from '@/lib/rolePresets'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -80,7 +82,8 @@ const TOOLS: Anthropic.Tool[] = [
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
-  userId: string
+  userId: string,
+  ctx: { role: string; permissions: Record<string, any> }
 ): Promise<string> {
   try {
     switch (name) {
@@ -162,6 +165,11 @@ async function executeTool(
       }
 
       case 'create_task': {
+        // Enforce the caller's own permission server-side — prompt-injected
+        // content can't make the AI act beyond what the user is allowed to do.
+        if (!checkPermission(ctx.permissions, ctx.role, 'tasks', 'create')) {
+          return 'You do not have permission to create tasks.'
+        }
         const { title, description, contactId, dueDate, priority } = input as {
           title: string; description?: string; contactId?: string; dueDate?: string; priority?: string
         }
@@ -179,6 +187,9 @@ async function executeTool(
       }
 
       case 'move_opportunity': {
+        if (!checkPermission(ctx.permissions, ctx.role, 'pipelines', 'edit')) {
+          return 'You do not have permission to move opportunities.'
+        }
         const { opportunityId, stageName } = input as { opportunityId: string; stageName: string }
         const stage = await prisma.stage.findFirst({ where: { name: { equals: stageName, mode: 'insensitive' } } })
         if (!stage) return `Stage "${stageName}" not found. Available stages: check /pipeline.`
@@ -231,6 +242,14 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const toolCtx = {
+    role: session.user.role,
+    permissions:
+      session.user.permissions && Object.keys(session.user.permissions).length > 0
+        ? session.user.permissions
+        : getPresetForRole(session.user.role),
+  }
+
   const { messages, context, conversationId } = await req.json() as {
     messages: { role: 'user' | 'assistant'; content: string }[]
     context: Record<string, unknown> | null
@@ -281,7 +300,7 @@ export async function POST(req: Request) {
           const toolResults: Anthropic.ToolResultBlockParam[] = []
           for (const block of finalMsg.content) {
             if (block.type !== 'tool_use') continue
-            const result = await executeTool(block.name, block.input as Record<string, unknown>, session.user.id)
+            const result = await executeTool(block.name, block.input as Record<string, unknown>, session.user.id, toolCtx)
             emit(controller, { type: 'tool_result', name: block.name, result })
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
           }

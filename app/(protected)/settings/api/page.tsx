@@ -83,6 +83,7 @@ export default function ApiSettingsPage() {
   const [generating, setGenerating] = useState(false)
   const [showNewForm, setShowNewForm] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
+  const [fullAccess, setFullAccess] = useState(false)
   const [newKeyValue, setNewKeyValue] = useState<{ key: string; name: string } | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
   const [showWebhooks, setShowWebhooks] = useState(false)
@@ -116,11 +117,13 @@ export default function ApiSettingsPage() {
       const res = await fetch('/api/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, fullAccess }),
       })
+      if (!res.ok) return
       const data = await res.json()
       setNewKeyValue({ key: data.key, name })
       setNewKeyName('')
+      setFullAccess(false)
       setShowNewForm(false)
       await load()
     } finally {
@@ -185,29 +188,40 @@ export default function ApiSettingsPage() {
 
         {/* New key form */}
         {showNewForm && (
-          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2.5">
             <input
               type="text"
               value={newKeyName}
               onChange={(e) => setNewKeyName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && generate()}
               placeholder="Key name (e.g. Cloudflare Worker, Zapier)"
-              className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none"
+              className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-[#0D1B2A]/20"
               autoFocus
             />
-            <button
-              onClick={generate}
-              disabled={generating}
-              className="rounded-lg bg-[#0D1B2A] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1B263B] disabled:opacity-50 transition-colors shrink-0"
-            >
-              {generating ? 'Generating…' : 'Generate'}
-            </button>
-            <button
-              onClick={() => setShowNewForm(false)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
-            >
-              Cancel
-            </button>
+            <label className="flex items-center gap-2 text-xs text-gray-600 select-none">
+              <input
+                type="checkbox"
+                checked={fullAccess}
+                onChange={(e) => setFullAccess(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              Full access (read &amp; write). Leave unchecked for a read-only key.
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={generate}
+                disabled={generating}
+                className="rounded-lg bg-[#0D1B2A] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1B263B] disabled:opacity-50 transition-colors shrink-0"
+              >
+                {generating ? 'Generating…' : 'Generate'}
+              </button>
+              <button
+                onClick={() => { setShowNewForm(false); setFullAccess(false) }}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 

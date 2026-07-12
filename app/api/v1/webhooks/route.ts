@@ -2,6 +2,7 @@ import { requireAuth } from '@/lib/api-v1/auth'
 import { ok, err } from '@/lib/api-v1/response'
 import { randomBytes } from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { validateWebhookUrlSync } from '@/lib/ssrf'
 
 export async function GET(req: Request) {
   const auth = await requireAuth(req, 'contacts:read')
@@ -23,6 +24,8 @@ export async function POST(req: Request) {
   const { url, events } = body
 
   if (!url) return err('VALIDATION_ERROR', 'url is required')
+  const urlCheck = validateWebhookUrlSync(String(url))
+  if (!urlCheck.ok) return err('VALIDATION_ERROR', urlCheck.reason)
   if (!Array.isArray(events) || events.length === 0) {
     return err('VALIDATION_ERROR', 'events array is required')
   }

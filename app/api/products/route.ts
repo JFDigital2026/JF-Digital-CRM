@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { stripeReady, stripe } from '@/lib/stripe'
+import { requirePermission } from '@/lib/permissions'
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('products', 'view')
+  if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(req.url)
   const includeArchived = searchParams.get('includeArchived') === 'true'
@@ -23,8 +22,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('products', 'create')
+  if (!auth.ok) return auth.response
+  const session = auth.session
 
   const body = await req.json()
   const { name, description, type, price, interval, intervalCount, intervalUnit, trialDays, planCount, planAmount, paymentFrequency, setupFee, price6Month, price12Month, price18Month, active } = body

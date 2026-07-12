@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import type { Session } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
@@ -13,7 +14,10 @@ const USER_SELECT = {
   createdByUser: { select: { id: true, firstName: true, lastName: true, name: true } },
 } as const
 
-async function requireAdmin() {
+// Returns the session plus whether the requester is a true ADMIN. manageUsers
+// grants user-management access, but only a real ADMIN may hand-craft permission
+// sets on the users they create (prevents privilege escalation).
+async function requireAdmin(): Promise<{ session: Session; isAdmin: boolean } | null> {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return null
   const user = await prisma.user.findUnique({
@@ -21,16 +25,15 @@ async function requireAdmin() {
     select: { role: true, active: true, permissions: true },
   })
   if (!user?.active) return null
-  // Allow ADMIN role OR any user with manageUsers permission
-  if (user.role === 'ADMIN') return session
+  if (user.role === 'ADMIN') return { session, isAdmin: true }
   const perms = user.permissions as Record<string, any>
-  if (perms?.settings?.manageUsers === true) return session
+  if (perms?.settings?.manageUsers === true) return { session, isAdmin: false }
   return null
 }
 
 export async function GET() {
-  const session = await requireAdmin()
-  if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const admin = await requireAdmin()
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const users = await prisma.user.findMany({
     select: USER_SELECT,
@@ -42,8 +45,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAdmin()
-    if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const admin = await requireAdmin()
+    if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const { session, isAdmin } = admin
 
     const body = await req.json()
     const { firstName, lastName, email, password, role, department, title, permissions } = body
@@ -59,7 +63,9 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ error: 'Email already in use' }, { status: 409 })
 
     const hash = await bcrypt.hash(password, 12)
-    const resolvedPermissions = permissions && Object.keys(permissions).length > 0
+    // Only a true ADMIN may supply a custom permission set. Non-admin creators
+    // always get the role's preset, so they cannot mint an over-privileged user.
+    const resolvedPermissions = isAdmin && permissions && Object.keys(permissions).length > 0
       ? permissions
       : getPresetForRole(role ?? 'SALES_REP')
 

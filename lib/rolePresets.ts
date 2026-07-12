@@ -7,6 +7,7 @@ export type PermissionsJson = {
   inbox: { view: boolean; reply: boolean }
   tasks: { view: boolean; create: boolean; edit: boolean; delete: boolean }
   products: { view: boolean; create: boolean; edit: boolean; delete: boolean }
+  billing: { view: boolean; manage: boolean }
   automations: { view: boolean; test: boolean; toggleActive: boolean }
   metrics: { view: boolean; export: boolean }
   aiAssistant: { view: boolean }
@@ -22,6 +23,7 @@ export const ADMIN_PERMISSIONS: PermissionsJson = {
   inbox: { view: true, reply: true },
   tasks: { view: true, create: true, edit: true, delete: true },
   products: { view: true, create: true, edit: true, delete: true },
+  billing: { view: true, manage: true },
   automations: { view: true, test: true, toggleActive: true },
   metrics: { view: true, export: true },
   aiAssistant: { view: true },
@@ -37,6 +39,7 @@ export const MANAGER_PERMISSIONS: PermissionsJson = {
   inbox: { view: true, reply: true },
   tasks: { view: true, create: true, edit: true, delete: false },
   products: { view: true, create: true, edit: true, delete: false },
+  billing: { view: true, manage: true },
   automations: { view: true, test: false, toggleActive: true },
   metrics: { view: true, export: true },
   aiAssistant: { view: true },
@@ -52,6 +55,7 @@ export const SALES_REP_PERMISSIONS: PermissionsJson = {
   inbox: { view: true, reply: true },
   tasks: { view: true, create: true, edit: true, delete: false },
   products: { view: true, create: false, edit: false, delete: false },
+  billing: { view: true, manage: false },
   automations: { view: true, test: false, toggleActive: false },
   metrics: { view: true, export: false },
   aiAssistant: { view: true },
@@ -67,6 +71,7 @@ export const SUPPORT_PERMISSIONS: PermissionsJson = {
   inbox: { view: true, reply: true },
   tasks: { view: true, create: true, edit: true, delete: false },
   products: { view: true, create: false, edit: false, delete: false },
+  billing: { view: false, manage: false },
   automations: { view: true, test: false, toggleActive: false },
   metrics: { view: true, export: false },
   aiAssistant: { view: true },

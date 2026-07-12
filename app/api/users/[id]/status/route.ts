@@ -18,11 +18,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (target.role === 'ADMIN') return NextResponse.json({ error: 'Cannot deactivate ADMIN account' }, { status: 403 })
 
   const { active } = await req.json()
+  const isActive = Boolean(active)
   const user = await prisma.user.update({
     where: { id: params.id },
-    data: { active: Boolean(active) },
+    data: { active: isActive },
     select: { id: true, active: true },
   })
+
+  // Cutting off a deactivated user also disables their API keys so they show as
+  // revoked in the UI (requireAuth already rejects them at request time).
+  if (!isActive) {
+    await prisma.apiKey.updateMany({
+      where: { userId: params.id, active: true },
+      data: { active: false },
+    })
+  }
 
   return NextResponse.json(user)
 }

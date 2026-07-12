@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const { orderId } = await req.json()
 
   const order = await prisma.order.findFirst({
-    where: { id: orderId },
+    where: { id: orderId, product: { userId: session.user.id } },
     include: {
       contact: true,
       product: true,
@@ -23,22 +23,26 @@ export async function POST(req: Request) {
   const existing = await prisma.invoice.findFirst({ where: { orderId } })
   if (existing) return NextResponse.json(existing)
 
-  const count = await prisma.invoice.count()
-  const number = `INV-${String(count + 1).padStart(5, '0')}`
-
-  const invoice = await prisma.invoice.create({
-    data: {
-      orderId,
-      contactId: order.contactId,
-      number,
-      amount: order.amount,
-      currency: order.currency,
-      status: 'DRAFT',
-    },
-    include: {
-      contact: true,
-      order: { include: { product: true } },
-    },
+  // Derive the sequence number inside a transaction with the create so two
+  // concurrent generate calls can't compute the same INV-number (the number
+  // column is unique — a race would otherwise 500).
+  const invoice = await prisma.$transaction(async (tx) => {
+    const count = await tx.invoice.count()
+    const number = `INV-${String(count + 1).padStart(5, '0')}`
+    return tx.invoice.create({
+      data: {
+        orderId,
+        contactId: order.contactId,
+        number,
+        amount: order.amount,
+        currency: order.currency,
+        status: 'DRAFT',
+      },
+      include: {
+        contact: true,
+        order: { include: { product: true } },
+      },
+    })
   })
 
   return NextResponse.json(invoice, { status: 201 })

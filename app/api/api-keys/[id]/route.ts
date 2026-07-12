@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission } from '@/lib/permissions'
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+// Owner may manage their own keys; an ADMIN may revoke any user's key (needed to
+// cut off a deactivated employee's keys).
+function canManageKey(keyUserId: string, session: { user: { id: string; role: string } }): boolean {
+  return keyUserId === session.user.id || session.user.role === 'ADMIN'
+}
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const auth = await requirePermission('settings', 'manageApi')
+  if (!auth.ok) return auth.response
 
   const key = await prisma.apiKey.findUnique({ where: { id: params.id } })
-  if (!key || key.userId !== session.user.id) {
+  if (!key || !canManageKey(key.userId, auth.session)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -17,11 +22,11 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('settings', 'manageApi')
+  if (!auth.ok) return auth.response
 
   const key = await prisma.apiKey.findUnique({ where: { id: params.id } })
-  if (!key || key.userId !== session.user.id) {
+  if (!key || !canManageKey(key.userId, auth.session)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

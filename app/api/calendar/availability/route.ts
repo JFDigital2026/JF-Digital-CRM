@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { zonedWallTimeToUtc } from '@/lib/timezone'
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
@@ -45,9 +46,10 @@ export async function GET(req: Request) {
   const buffer = config.bufferTime ?? 0
   const maxPerDay = config.maxBookingsPerDay ?? 10
 
-  // Date boundaries for the requested day (UTC)
-  const dayStart = new Date(`${dateParam}T00:00:00.000Z`)
-  const dayEnd = new Date(`${dateParam}T23:59:59.999Z`)
+  // Date boundaries as absolute UTC instants for the requested calendar day in
+  // the calendar's timezone (matches how the booking route stores/compares).
+  const dayStart = zonedWallTimeToUtc(dateParam, '00:00', config.timezone)
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1)
 
   // Count total events on this date
   const totalEventsOnDay = await prisma.calendarEvent.count({
@@ -75,8 +77,7 @@ export async function GET(req: Request) {
   })
 
   const availableSlots = allSlots.filter((slot) => {
-    const [sh, sm] = slot.split(':').map(Number)
-    const slotStartMs = dayStart.getTime() + (sh * 60 + sm) * 60 * 1000
+    const slotStartMs = zonedWallTimeToUtc(dateParam, slot, config.timezone).getTime()
     const slotEndMs = slotStartMs + duration * 60 * 1000
 
     return !existingEvents.some((ev) => {

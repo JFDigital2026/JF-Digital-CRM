@@ -171,7 +171,7 @@ export function FileUploader({
           <p className="text-sm font-medium text-gray-700">
             Drop files here or <span className="text-slate">browse</span>
           </p>
-          <p className="mt-0.5 text-xs text-gray-400">Any file type, no size limit</p>
+          <p className="mt-0.5 text-xs text-gray-400">Documents &amp; images up to 25&nbsp;MB</p>
         </div>
       </div>
 
@@ -228,7 +228,7 @@ export function FileUploader({
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Uploaded</p>
           {existingFiles.map((file) => (
             <div
-              key={file.url}
+              key={file.id ?? file.url}
               className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
             >
               <FileText size={16} className="shrink-0 text-gray-400" />
@@ -238,7 +238,7 @@ export function FileUploader({
               </div>
               <div className="flex items-center gap-1">
                 <a
-                  href={file.url}
+                  href={file.id ? `/api/files/${file.id}/download` : file.url}
                   download={file.name}
                   target="_blank"
                   rel="noreferrer"

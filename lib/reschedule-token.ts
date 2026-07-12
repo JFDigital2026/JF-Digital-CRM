@@ -1,4 +1,5 @@
 import { createHmac } from 'crypto'
+import { safeEqual } from '@/lib/timing'
 
 interface TokenPayload {
   eventId: string
@@ -20,7 +21,7 @@ export function verifyRescheduleToken(token: string): TokenPayload {
   const payload = token.slice(0, dot)
   const sig = token.slice(dot + 1)
   const expected = createHmac('sha256', process.env.NEXTAUTH_SECRET!).update(payload).digest('base64url')
-  if (sig !== expected) throw new Error('Invalid token')
+  if (!safeEqual(sig, expected)) throw new Error('Invalid token')
   const data = JSON.parse(Buffer.from(payload, 'base64url').toString()) as TokenPayload
   if (Date.now() > data.exp) throw new Error('Token expired')
   return data

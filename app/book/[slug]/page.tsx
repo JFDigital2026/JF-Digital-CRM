@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import DOMPurify from 'isomorphic-dompurify'
 import {
   format,
   startOfMonth,
@@ -146,7 +147,12 @@ function LeftPanel({
       {config.description && (
         <div
           className="mt-5 text-sm text-[#6b7d8e] leading-relaxed prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: config.description }}
+          dangerouslySetInnerHTML={{
+            __html: DOMPurify.sanitize(config.description, {
+              ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'span'],
+              ALLOWED_ATTR: ['href', 'target', 'rel'],
+            }),
+          }}
         />
       )}
     </div>
@@ -322,9 +328,6 @@ function TimeSlots({
 type MatchedContact = {
   id: string
   firstName: string
-  lastName: string
-  email: string
-  phone: string
 }
 
 function BookingForm({
@@ -376,14 +379,10 @@ function BookingForm({
 
   function handleConfirmMatch() {
     if (!matchedContact) return
+    // Link the booking to the existing contact and greet by first name. Other
+    // details stay as the visitor typed them — the API no longer returns them.
     setConfirmedContactId(matchedContact.id)
-    setForm((f) => ({
-      ...f,
-      firstName: matchedContact.firstName,
-      lastName: matchedContact.lastName,
-      email: matchedContact.email,
-      phone: matchedContact.phone,
-    }))
+    setForm((f) => ({ ...f, firstName: matchedContact.firstName }))
     setMatchedContact(null)
   }
 
@@ -438,13 +437,8 @@ function BookingForm({
               Welcome back, {matchedContact.firstName}!
             </p>
             <p className="text-xs text-[#6b7d8e] mb-3">
-              Is this still your information?
+              We found your profile — want to use it?
             </p>
-            <div className="text-xs text-[#4a5568] space-y-0.5 mb-3">
-              <p>{matchedContact.firstName} {matchedContact.lastName}</p>
-              {matchedContact.email && <p>{matchedContact.email}</p>}
-              {matchedContact.phone && <p>{matchedContact.phone}</p>}
-            </div>
             <div className="flex gap-2">
               <button type="button" onClick={handleConfirmMatch}
                 className="flex-1 rounded-lg bg-[#4b6070] text-white text-xs font-semibold py-2 hover:bg-[#3a4f60] transition-colors">

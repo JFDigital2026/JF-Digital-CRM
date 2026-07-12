@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission } from '@/lib/permissions'
+import { toInt, parseDateParam } from '@/lib/utils'
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'view')
+  if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(req.url)
   const pipelineId = searchParams.get('pipelineId')
@@ -20,8 +20,8 @@ export async function GET(req: Request) {
   const probabilityMax = searchParams.get('probabilityMax')
   const companyId = searchParams.get('companyId')
 
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-  const pageSize = Math.min(200, Math.max(1, parseInt(searchParams.get('pageSize') ?? '50', 10)))
+  const page = toInt(searchParams.get('page'), 1, { min: 1 })
+  const pageSize = toInt(searchParams.get('pageSize'), 50, { min: 1, max: 200 })
 
   const where: any = {}
   if (pipelineId) where.pipelineId = pipelineId
@@ -30,22 +30,30 @@ export async function GET(req: Request) {
   if (assignedTo) where.assignedTo = assignedTo
   if (companyId) where.companyId = companyId
 
-  if (closeDateFrom || closeDateTo) {
+  // parseDateParam / Number.isFinite guards keep unparseable query values from
+  // reaching Prisma as Invalid Date / NaN (both throw or silently match nothing).
+  const closeFrom = parseDateParam(closeDateFrom)
+  const closeTo = parseDateParam(closeDateTo)
+  if (closeFrom || closeTo) {
     where.closeDate = {}
-    if (closeDateFrom) where.closeDate.gte = new Date(closeDateFrom)
-    if (closeDateTo) where.closeDate.lte = new Date(closeDateTo)
+    if (closeFrom) where.closeDate.gte = closeFrom
+    if (closeTo) where.closeDate.lte = closeTo
   }
 
-  if (valueMin !== null || valueMax !== null) {
+  const valueMinN = valueMin !== null ? parseFloat(valueMin) : NaN
+  const valueMaxN = valueMax !== null ? parseFloat(valueMax) : NaN
+  if (Number.isFinite(valueMinN) || Number.isFinite(valueMaxN)) {
     where.value = {}
-    if (valueMin !== null) where.value.gte = parseFloat(valueMin)
-    if (valueMax !== null) where.value.lte = parseFloat(valueMax)
+    if (Number.isFinite(valueMinN)) where.value.gte = valueMinN
+    if (Number.isFinite(valueMaxN)) where.value.lte = valueMaxN
   }
 
-  if (probabilityMin !== null || probabilityMax !== null) {
+  const probMinN = probabilityMin !== null ? parseFloat(probabilityMin) : NaN
+  const probMaxN = probabilityMax !== null ? parseFloat(probabilityMax) : NaN
+  if (Number.isFinite(probMinN) || Number.isFinite(probMaxN)) {
     where.probability = {}
-    if (probabilityMin !== null) where.probability.gte = parseFloat(probabilityMin)
-    if (probabilityMax !== null) where.probability.lte = parseFloat(probabilityMax)
+    if (Number.isFinite(probMinN)) where.probability.gte = probMinN
+    if (Number.isFinite(probMaxN)) where.probability.lte = probMaxN
   }
 
   const [opportunities, total] = await Promise.all([
@@ -67,8 +75,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'create')
+  if (!auth.ok) return auth.response
+  const session = auth.session
 
   const body = await req.json()
   const { title, value, probability, closeDate, contactId, companyId, stageId, pipelineId, notes } = body

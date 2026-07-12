@@ -8,7 +8,7 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const values = await prisma.customValue.findMany({
-    where: {},
+    where: { userId: session.user.id },
     orderBy: { createdAt: 'asc' },
   })
   return NextResponse.json(values)

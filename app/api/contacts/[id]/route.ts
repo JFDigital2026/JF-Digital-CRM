@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { triggerAutomation } from '@/lib/automation-engine'
+import { requirePermission } from '@/lib/permissions'
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('contacts', 'view')
+  if (!auth.ok) return auth.response
 
   const contact = await prisma.contact.findUnique({
     where: { id: params.id },
@@ -21,8 +20,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('contacts', 'edit')
+  if (!auth.ok) return auth.response
+  const session = auth.session
 
   const body = await req.json()
   const { customFields, newCompanyName, ...updates } = body
@@ -90,8 +90,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('contacts', 'delete')
+  if (!auth.ok) return auth.response
 
   const contact = await prisma.contact.findUnique({ where: { id: params.id } })
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 })

@@ -34,7 +34,6 @@ function PayPageInner() {
 
   const [contact, setContact] = useState({ firstName: '', lastName: '', email: '', phone: '' })
   const [couponCode, setCouponCode] = useState('')
-  const [couponId, setCouponId] = useState<string | null>(null)
   const [couponDiscount, setCouponDiscount] = useState('')
   const [checkingCoupon, setCheckingCoupon] = useState(false)
   const [couponError, setCouponError] = useState('')
@@ -70,7 +69,6 @@ function PayPageInner() {
       const res = await fetch(`/api/pay/validate-coupon?code=${encodeURIComponent(couponCode)}&productId=${product.id}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
-      setCouponId(data.id)
       setCouponDiscount(data.percentOff ? `${data.percentOff}% off` : data.amountOff ? `$${data.amountOff} off` : 'Applied')
     } catch {
       setCouponError('Coupon not valid')
@@ -87,7 +85,7 @@ function PayPageInner() {
       const res = await fetch('/api/pay/create-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: product.id, contact, couponId }),
+        body: JSON.stringify({ productId: product.id, contact, couponCode: couponDiscount ? couponCode : undefined }),
       })
       if (!res.ok) throw new Error(await res.text())
       const { sessionUrl } = await res.json()
@@ -156,7 +154,7 @@ function PayPageInner() {
             {couponDiscount ? (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-green-600 font-medium">✓ {couponDiscount} applied</span>
-                <button onClick={() => { setCouponId(null); setCouponDiscount(''); setCouponCode('') }} className="text-xs text-gray-400 hover:text-gray-600">Remove</button>
+                <button onClick={() => { setCouponDiscount(''); setCouponCode('') }} className="text-xs text-gray-400 hover:text-gray-600">Remove</button>
               </div>
             ) : (
               <div className="flex gap-2">
