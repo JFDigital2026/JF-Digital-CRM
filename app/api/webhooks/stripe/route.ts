@@ -20,6 +20,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
+  // Idempotency: record the event id first. Stripe redelivers on retry, so if
+  // we've seen this id before, ack and do nothing — otherwise we'd duplicate
+  // invoices and re-fire automations/notifications.
+  try {
+    await prisma.processedWebhookEvent.create({ data: { id: event.id, source: 'stripe' } })
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2002') {
+      return NextResponse.json({ received: true, duplicate: true })
+    }
+    throw err
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -34,21 +46,27 @@ export async function POST(req: Request) {
             },
           })
 
-          // Auto-generate invoice
+          // Auto-generate invoice (one per order; numbering derived inside a
+          // transaction so it can't collide with a concurrent generate call).
           const order = await prisma.order.findUnique({ where: { id: session.metadata.orderId } })
           if (order) {
-            const count = await prisma.invoice.count()
-            const number = `INV-${String(count + 1).padStart(5, '0')}`
-            await prisma.invoice.create({
-              data: {
-                orderId: order.id,
-                contactId: order.contactId,
-                number,
-                amount: order.amount,
-                currency: order.currency,
-                status: 'DRAFT',
-              },
-            })
+            const existingInvoice = await prisma.invoice.findFirst({ where: { orderId: order.id } })
+            if (!existingInvoice) {
+              await prisma.$transaction(async (tx) => {
+                const count = await tx.invoice.count()
+                const number = `INV-${String(count + 1).padStart(5, '0')}`
+                await tx.invoice.create({
+                  data: {
+                    orderId: order.id,
+                    contactId: order.contactId,
+                    number,
+                    amount: order.amount,
+                    currency: order.currency,
+                    status: 'DRAFT',
+                  },
+                })
+              })
+            }
 
             if (order.contactId) {
               triggerAutomation('PAYMENT_RECEIVED', order.contactId, { amount: order.amount, orderId: order.id }).catch(() => {})

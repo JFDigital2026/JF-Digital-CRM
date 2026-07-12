@@ -1,8 +1,12 @@
 /** @type {import('next').NextConfig} */
 
+// 'unsafe-eval' is only needed by Next.js dev tooling (HMR/source maps). Keep it
+// out of production so an XSS foothold can't use eval-based execution.
+const isDev = process.env.NODE_ENV === 'development'
+
 const ContentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} https://js.stripe.com`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https://uploadthing.com https://utfs.io",

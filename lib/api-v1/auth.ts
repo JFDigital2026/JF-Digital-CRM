@@ -31,9 +31,15 @@ export async function requireAuth(
   const rawKey = auth.slice(7)
   const hashedKey = hashApiKey(rawKey)
 
-  const apiKey = await prisma.apiKey.findUnique({ where: { hashedKey } })
+  const apiKey = await prisma.apiKey.findUnique({
+    where: { hashedKey },
+    include: { user: { select: { active: true } } },
+  })
 
-  if (!apiKey || !apiKey.active) {
+  // Reject if the key is inactive OR its owning user has been deactivated.
+  // Without the user.active check, a deactivated (e.g. terminated) user's key
+  // would keep full programmatic access even after their session is revoked.
+  if (!apiKey || !apiKey.active || !apiKey.user?.active) {
     return {
       ok: false,
       response: NextResponse.json(

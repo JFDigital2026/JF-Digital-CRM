@@ -34,5 +34,7 @@ declare module 'next-auth/jwt' {
     lastName?: string
     department?: string | null
     permissions?: Record<string, any>
+    active?: boolean
+    lastChecked?: number
   }
 }

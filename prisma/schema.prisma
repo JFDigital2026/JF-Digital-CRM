@@ -966,3 +966,17 @@ model SystemConfig {
   @@unique([userId, key])
   @@index([userId])
 }
+
+// ─── Webhook Idempotency ──────────────────────────────────────────────────────
+
+// One row per external webhook event we've handled (keyed by the provider's
+// event id). Stripe delivers events at-least-once, so the handler inserts the id
+// first and skips if it already exists — preventing duplicate invoices, repeated
+// automations, and double notifications on redelivery.
+model ProcessedWebhookEvent {
+  id        String   @id
+  source    String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { triggerAutomation } from '@/lib/automation-engine'
+import { requirePermission } from '@/lib/permissions'
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'view')
+  if (!auth.ok) return auth.response
 
   const opportunity = await prisma.opportunity.findUnique({
     where: { id: params.id },
@@ -29,8 +28,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'edit')
+  if (!auth.ok) return auth.response
+  const session = auth.session
 
   const body = await req.json()
   const { title, value, probability, closeDate, stageId, contactId, companyId, notes, outcome, wonAmount, outcomeReason, assignedTo } = body
@@ -80,8 +80,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'delete')
+  if (!auth.ok) return auth.response
 
   await prisma.opportunity.delete({ where: { id: params.id } })
   return NextResponse.json({ success: true })

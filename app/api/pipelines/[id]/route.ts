@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requirePermission } from '@/lib/permissions'
 
 // PUT /api/pipelines/[id]
 // Body: { name?: string, stages: Array<{ id?: string, name: string, color: string, order: number }> }
 // Stages with id → update. Stages without id → create. Existing stages not in list → delete (opps moved to first remaining stage).
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'managePipelines')
+  if (!auth.ok) return auth.response
 
   const pipeline = await prisma.pipeline.findFirst({
     where: { id: params.id },
@@ -17,6 +16,9 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (!pipeline) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { name, stages } = await req.json()
+  if (!Array.isArray(stages)) {
+    return NextResponse.json({ error: 'stages must be an array' }, { status: 400 })
+  }
 
   // Update pipeline name if provided
   if (name?.trim()) {
@@ -65,8 +67,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('pipelines', 'managePipelines')
+  if (!auth.ok) return auth.response
 
   await prisma.pipeline.deleteMany({ where: { id: params.id } })
   return NextResponse.json({ ok: true })

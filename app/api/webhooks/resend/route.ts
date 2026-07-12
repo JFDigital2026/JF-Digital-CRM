@@ -1,18 +1,73 @@
 import { NextResponse } from 'next/server'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { prisma } from '@/lib/prisma'
+
+const TOLERANCE_SECONDS = 5 * 60 // reject timestamps older/newer than 5 min (replay guard)
+
+// Resend signs webhooks with Svix. Signed content is `${id}.${timestamp}.${body}`,
+// HMAC-SHA256 keyed by the base64 secret (after the "whsec_" prefix), base64-encoded.
+// The svix-signature header is a space-delimited list of `v1,<sig>` entries.
+function verifySvixSignature(
+  secret: string,
+  svixId: string,
+  svixTimestamp: string,
+  body: string,
+  signatureHeader: string
+): boolean {
+  const ts = parseInt(svixTimestamp, 10)
+  if (!Number.isFinite(ts)) return false
+  const now = Math.floor(Date.now() / 1000)
+  if (Math.abs(now - ts) > TOLERANCE_SECONDS) return false
+
+  const secretBytes = Buffer.from(secret.replace(/^whsec_/, ''), 'base64')
+  const signedContent = `${svixId}.${svixTimestamp}.${body}`
+  const expected = createHmac('sha256', secretBytes).update(signedContent).digest('base64')
+
+  const provided = signatureHeader
+    .split(' ')
+    .map((part) => (part.includes(',') ? part.split(',')[1] : part))
+    .filter(Boolean)
+
+  const expectedBuf = Buffer.from(expected)
+  return provided.some((sig) => {
+    const sigBuf = Buffer.from(sig)
+    return sigBuf.length === expectedBuf.length && timingSafeEqual(sigBuf, expectedBuf)
+  })
+}
 
 export async function POST(req: Request) {
   try {
-    const data = await req.json()
+    const secret = process.env.RESEND_WEBHOOK_SECRET
+    const svixId = req.headers.get('svix-id') ?? ''
+    const svixTimestamp = req.headers.get('svix-timestamp') ?? ''
+    const svixSignature = req.headers.get('svix-signature') ?? ''
+
+    // Raw body is required for signature verification — read text, then parse.
+    const raw = await req.text()
+
+    // Fail closed: without a configured secret we cannot verify the sender.
+    if (!secret) {
+      console.error('Resend webhook: RESEND_WEBHOOK_SECRET not set — rejecting unverified request')
+      return new NextResponse('Forbidden', { status: 403 })
+    }
+
+    if (
+      !svixId ||
+      !svixTimestamp ||
+      !svixSignature ||
+      !verifySvixSignature(secret, svixId, svixTimestamp, raw, svixSignature)
+    ) {
+      console.error('Resend webhook: invalid signature')
+      return new NextResponse('Forbidden', { status: 403 })
+    }
+
+    const data = JSON.parse(raw)
 
     // Resend inbound webhook payload fields (may vary):
     // data.from or data.sender — sender address like "John Doe <john@example.com>"
-    // data.to — array or string of recipients
     // data.subject — email subject
-    // data.text — plain text body
-    // data.html — HTML body
+    // data.text / data.html — body
     // data.messageId or data.id — unique message ID
-
     const fromRaw: string = data.from ?? data.sender ?? ''
     const subject: string = data.subject ?? ''
     const body: string =
@@ -72,6 +127,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('Resend webhook error:', err)
-    return NextResponse.json({ ok: true }) // Always return 200 to prevent retries
+    // Verified-but-malformed payloads: ack to avoid retry storms.
+    return NextResponse.json({ ok: true })
   }
 }

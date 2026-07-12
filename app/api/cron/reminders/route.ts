@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { prisma } from '@/lib/prisma'
 import { createRescheduleToken } from '@/lib/reschedule-token'
+import { safeEqual } from '@/lib/timing'
 
 const WINDOW_MS = 10 * 60 * 1000 // ±10 min window
 
@@ -111,7 +112,7 @@ function build1hHtml(firstName: string, dateDisplay: string, timeDisplay: string
 
 export async function GET(req: Request) {
   const auth = req.headers.get('authorization')
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || !auth || !safeEqual(auth, `Bearer ${process.env.CRON_SECRET}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

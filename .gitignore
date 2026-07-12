@@ -16,6 +16,12 @@
 # production
 /build
 
+# uploaded files (private, runtime-generated)
+/uploads/
+
+# local deliverables & DB backups (contain client data — never commit)
+/OUTPUT/
+
 # misc
 .DS_Store
 *.pem

@@ -6,8 +6,35 @@ import { rateLimit, getIp } from '@/lib/rate-limit'
 import { createZoomMeeting } from '@/lib/zoom'
 import { createRescheduleToken } from '@/lib/reschedule-token'
 import { createGoogleCalendarEvent } from '@/lib/google-calendar'
+import { zonedWallTimeToUtc } from '@/lib/timezone'
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+
+// Latest date a visitor may book, derived from the calendar's rolling window
+// (dateRange + dateRangeUnit). Returns null if no range is configured (unbounded).
+function computeMaxBookingDate(
+  from: Date,
+  dateRange: number | null | undefined,
+  dateRangeUnit: string | null | undefined
+): Date | null {
+  if (!dateRange || dateRange <= 0) return null
+  const max = new Date(from)
+  switch (dateRangeUnit) {
+    case 'weeks':
+      max.setDate(max.getDate() + dateRange * 7)
+      break
+    case 'months':
+      max.setMonth(max.getMonth() + dateRange)
+      break
+    case 'days':
+    default:
+      max.setDate(max.getDate() + dateRange)
+      break
+  }
+  // Allow the entire final day.
+  max.setHours(23, 59, 59, 999)
+  return max
+}
 
 function generateSlots(start: string, end: string, duration: number, buffer: number): string[] {
   const slots: string[] = []
@@ -32,6 +59,7 @@ async function isSlotAvailable(
   duration: number,
   buffer: number,
   maxPerDay: number,
+  timeZone: string,
   availability: Record<string, { enabled: boolean; start: string; end: string }>
 ): Promise<boolean> {
   const date = new Date(dateParam)
@@ -43,8 +71,11 @@ async function isSlotAvailable(
   const allSlots = generateSlots(dayAvail.start, dayAvail.end, duration, buffer)
   if (!allSlots.includes(time)) return false
 
-  const dayStart = new Date(`${dateParam}T00:00:00.000Z`)
-  const dayEnd = new Date(`${dateParam}T23:59:59.999Z`)
+  // Day boundaries as absolute UTC instants for the requested calendar day in the
+  // calendar's timezone (not UTC midnight), so counts/conflicts line up with how
+  // the slot itself is stored.
+  const dayStart = zonedWallTimeToUtc(dateParam, '00:00', timeZone)
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1)
 
   const totalEventsOnDay = await prisma.calendarEvent.count({
     where: {
@@ -56,8 +87,8 @@ async function isSlotAvailable(
 
   if (totalEventsOnDay >= maxPerDay) return false
 
-  const [sh, sm] = time.split(':').map(Number)
-  const slotStartMs = dayStart.getTime() + (sh * 60 + sm) * 60 * 1000
+  const slotStart = zonedWallTimeToUtc(dateParam, time, timeZone)
+  const slotStartMs = slotStart.getTime()
   const slotEndMs = slotStartMs + duration * 60 * 1000
 
   const conflict = await prisma.calendarEvent.findFirst({
@@ -102,12 +133,31 @@ export async function POST(req: Request) {
     config.duration,
     config.bufferTime ?? 0,
     config.maxBookingsPerDay ?? 10,
+    config.timezone,
     availability
   )
 
   if (!slotOk) {
     return NextResponse.json({ error: 'Slot is no longer available' }, { status: 409 })
   }
+
+  // Enforce the booking window server-side. The browser hides past dates and
+  // dates beyond config.dateRange, but nothing stopped a crafted POST from
+  // booking a past date or one years out — so re-check here. startTime is the
+  // absolute UTC instant for the wall-clock slot in the calendar's timezone.
+  const startTime = zonedWallTimeToUtc(date, time, config.timezone)
+  if (isNaN(startTime.getTime())) {
+    return NextResponse.json({ error: 'Invalid date or time' }, { status: 400 })
+  }
+  const now = new Date()
+  if (startTime.getTime() <= now.getTime()) {
+    return NextResponse.json({ error: 'Cannot book a time in the past' }, { status: 400 })
+  }
+  const maxDate = computeMaxBookingDate(now, config.dateRange, config.dateRangeUnit)
+  if (maxDate && startTime.getTime() > maxDate.getTime()) {
+    return NextResponse.json({ error: 'That date is outside the booking window' }, { status: 400 })
+  }
+  const endTime = new Date(startTime.getTime() + config.duration * 60 * 1000)
 
   // Find or create contact
   let contact = null
@@ -139,24 +189,32 @@ export async function POST(req: Request) {
     })
   }
 
-  // Build start/end times
-  const startTime = new Date(`${date}T${time}:00`)
-  const endTime = new Date(startTime.getTime() + config.duration * 60 * 1000)
-
   const title = `${firstName} ${lastName}`
 
-  const event = await prisma.calendarEvent.create({
-    data: {
-      calendarConfigId: calId,
-      contactId: contact.id,
-      userId: config.userId,
-      title,
-      startTime,
-      endTime,
-      notes: notes ?? null,
-      status: 'CONFIRMED',
-    },
-  })
+  // A partial unique index on (calendarConfigId, startTime) for non-cancelled
+  // events makes the DB the final arbiter of the slot: if two bookings race past
+  // the availability check above, exactly one create succeeds and the other hits
+  // a unique violation (P2002), which we surface as "slot taken".
+  let event
+  try {
+    event = await prisma.calendarEvent.create({
+      data: {
+        calendarConfigId: calId,
+        contactId: contact.id,
+        userId: config.userId,
+        title,
+        startTime,
+        endTime,
+        notes: notes ?? null,
+        status: 'CONFIRMED',
+      },
+    })
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2002') {
+      return NextResponse.json({ error: 'Slot is no longer available' }, { status: 409 })
+    }
+    throw err
+  }
 
   // ── Zoom meeting + emails (non-fatal) ────────────────────────────────────
   let zoomJoinUrl: string | null = null

@@ -264,40 +264,8 @@ export default function CompaniesPage() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-3 sm:p-6">
-      <PageHeader
-        title="Companies"
-        subtitle={`${total} total`}
-        actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setMobileFilterOpen(true)}
-              className="lg:hidden flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 bg-white"
-            >
-              <SlidersHorizontal size={14} />
-              Filters
-            </button>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1B263B]"
-            >
-              <Plus size={15} />
-              <span className="hidden sm:inline">New Company</span>
-              <span className="sm:hidden">New</span>
-            </button>
-          </div>
-        }
-      />
-
-      <div className="mb-4">
-        <SearchInput
-          value={search}
-          onChange={handleSearchChange}
-          placeholder="Search companies…"
-          className="max-w-sm"
-        />
-      </div>
-
+    <div className="flex h-full">
+      {/* Filter sidebar (desktop panel + mobile drawer) */}
       <FilterSidebar
         sections={FILTER_SECTIONS}
         value={filters}
@@ -307,21 +275,52 @@ export default function CompaniesPage() {
         onMobileClose={() => setMobileFilterOpen(false)}
       />
 
-      <div className="flex gap-4">
-        {/* Data table */}
-        <div className="min-w-0 flex-1">
-          <DataTable
-            columns={columns}
-            data={companies}
-            loading={loading}
-            onRowClick={(row) => router.push(`/companies/${row.id}`)}
-            getRowId={(row) => row.id}
-            page={page}
-            pageSize={PAGE_SIZE}
-            totalCount={total}
-            onPageChange={setPage}
+      {/* Main content */}
+      <div className="flex-1 overflow-auto px-3 py-3 sm:px-6 sm:py-6 min-w-0">
+        <PageHeader
+          title="Companies"
+          subtitle={`${total} total`}
+          actions={
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setMobileFilterOpen(true)}
+                className="lg:hidden flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 bg-white"
+              >
+                <SlidersHorizontal size={14} />
+                Filters
+              </button>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="flex items-center gap-2 rounded-lg bg-[#0D1B2A] px-3 py-2 text-sm font-medium text-white hover:bg-[#1B263B]"
+              >
+                <Plus size={15} />
+                <span className="hidden sm:inline">New Company</span>
+                <span className="sm:hidden">New</span>
+              </button>
+            </div>
+          }
+        />
+
+        <div className="mt-4 mb-4">
+          <SearchInput
+            value={search}
+            onChange={handleSearchChange}
+            placeholder="Search companies…"
+            className="max-w-sm"
           />
         </div>
+
+        <DataTable
+          columns={columns}
+          data={companies}
+          loading={loading}
+          onRowClick={(row) => router.push(`/companies/${row.id}`)}
+          getRowId={(row) => row.id}
+          page={page}
+          pageSize={PAGE_SIZE}
+          totalCount={total}
+          onPageChange={setPage}
+        />
       </div>
 
       {/* ── New Company modal ─────────────────────────────────────────────── */}

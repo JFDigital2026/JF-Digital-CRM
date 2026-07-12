@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { triggerAutomation } from '@/lib/automation-engine'
+import { requirePermission } from '@/lib/permissions'
+import { toInt, parseDateParam } from '@/lib/utils'
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('contacts', 'view')
+  if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search') ?? ''
@@ -16,8 +16,8 @@ export async function GET(req: Request) {
   const dateFrom = searchParams.get('dateFrom')
   const dateTo = searchParams.get('dateTo')
   const companyId = searchParams.get('companyId')
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
-  const pageSize = Math.min(100, parseInt(searchParams.get('pageSize') ?? '20'))
+  const page = toInt(searchParams.get('page'), 1, { min: 1 })
+  const pageSize = toInt(searchParams.get('pageSize'), 20, { min: 1, max: 100 })
 
   const includeUnverified = searchParams.get('includeUnverified') === 'true'
 
@@ -39,8 +39,8 @@ export async function GET(req: Request) {
       leadStatuses.length ? { leadStatus: { in: leadStatuses } } : {},
       dnc === 'true' ? { doNotContact: true } : {},
       tags.length ? { tags: { hasSome: tags } } : {},
-      dateFrom ? { createdAt: { gte: new Date(dateFrom) } } : {},
-      dateTo ? { createdAt: { lte: new Date(dateTo) } } : {},
+      parseDateParam(dateFrom) ? { createdAt: { gte: parseDateParam(dateFrom) } } : {},
+      parseDateParam(dateTo) ? { createdAt: { lte: parseDateParam(dateTo) } } : {},
       companyId ? { companyId } : {},
     ],
   }
@@ -62,8 +62,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('contacts', 'create')
+  if (!auth.ok) return auth.response
+  const session = auth.session
 
   const body = await req.json()
   const { customFields, newCompanyName, ...data } = body

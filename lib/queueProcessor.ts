@@ -13,7 +13,16 @@ export async function processQueue(): Promise<{ processed: number }> {
   let processed = 0
   for (const item of due) {
     try {
-      await prisma.automationQueue.update({ where: { id: item.id }, data: { status: 'COMPLETED' } })
+      // Atomically claim the item: the update only matches while it's still
+      // PENDING, so if the boot-time interval and the cron endpoint both pick up
+      // the same row, exactly one wins the flip to COMPLETED and the other skips.
+      // Without this guard both runners would execute the item — duplicate
+      // emails/SMS to the contact.
+      const claim = await prisma.automationQueue.updateMany({
+        where: { id: item.id, status: 'PENDING' },
+        data: { status: 'COMPLETED' },
+      })
+      if (claim.count === 0) continue
 
       if (item.nextStepId && item.automation && item.contactId) {
         const { executeFromStep, buildStepContext } = await import('./automation-engine')

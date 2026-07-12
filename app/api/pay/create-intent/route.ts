@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { rateLimit, getIp } from '@/lib/rate-limit'
+import { resolveCouponForCheckout } from '@/lib/coupons'
 
 // Public — no auth (called from payment page)
 export async function POST(req: Request) {
   const rl = rateLimit(getIp(req), 20, 60_000) // 20 intents/min per IP
   if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
 
-  const { productId, contact, couponId } = await req.json()
+  const { productId, contact, couponCode } = await req.json()
 
   if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.includes('REPLACE_ME')) {
     return NextResponse.json({ error: 'Stripe not configured' }, { status: 503 })
@@ -48,6 +49,14 @@ export async function POST(req: Request) {
     },
   })
 
+  // Resolve the coupon from the CODE server-side. Never trust a coupon id from
+  // the client — that would let anyone apply an arbitrary (e.g. 100%-off) coupon.
+  let resolvedCouponId: string | null = null
+  if (couponCode) {
+    const resolved = await resolveCouponForCheckout(String(couponCode), product.id)
+    if (resolved) resolvedCouponId = resolved.stripeCouponId
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:4000'
   const returnUrl = `${appUrl}/pay/${productId}/success?orderId=${order.id}`
 
@@ -59,7 +68,7 @@ export async function POST(req: Request) {
     metadata: { orderId: order.id, contactId: crmContact.id },
     success_url: returnUrl,
     cancel_url: `${appUrl}/pay/${productId}`,
-    ...(couponId && { discounts: [{ coupon: couponId }] }),
+    ...(resolvedCouponId && { discounts: [{ coupon: resolvedCouponId }] }),
     ...(product.type === 'SUBSCRIPTION' && product.trialDays
       ? { subscription_data: { trial_period_days: product.trialDays } }
       : {}),

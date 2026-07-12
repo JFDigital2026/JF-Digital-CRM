@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { startOfDay, endOfDay } from 'date-fns'
+import { requirePermission } from '@/lib/permissions'
+import { toInt } from '@/lib/utils'
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('tasks', 'view')
+  if (!auth.ok) return auth.response
+  const session = auth.session
 
   const { searchParams } = new URL(req.url)
   const filter = searchParams.get('filter') ?? 'all'
   const search = searchParams.get('search') ?? ''
   const priorities = searchParams.getAll('priority[]')
   const contactId = searchParams.get('contactId')
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
-  const pageSize = Math.min(100, parseInt(searchParams.get('pageSize') ?? '50'))
+  const page = toInt(searchParams.get('page'), 1, { min: 1 })
+  const pageSize = toInt(searchParams.get('pageSize'), 50, { min: 1, max: 100 })
 
   const now = new Date()
   const where: Record<string, unknown> = {}
@@ -53,8 +54,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requirePermission('tasks', 'create')
+  if (!auth.ok) return auth.response
+  const session = auth.session
 
   const body = await req.json()
 
