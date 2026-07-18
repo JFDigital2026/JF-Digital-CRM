@@ -64,6 +64,7 @@ const PERMISSION_MODULES = [
   { key: 'inbox',        label: 'Inbox',        actions: ['view','reply'] },
   { key: 'tasks',        label: 'Tasks',        actions: ['view','create','edit','delete'] },
   { key: 'products',     label: 'Products',     actions: ['view','create','edit','delete'] },
+  { key: 'billing',      label: 'Billing',      actions: ['view','manage'] },
   { key: 'automations',  label: 'Automations',  actions: ['view','test','toggleActive'] },
   { key: 'metrics',      label: 'Metrics',      actions: ['view','export'] },
   { key: 'aiAssistant',  label: 'AI Assistant', actions: ['view'] },
@@ -75,7 +76,7 @@ const ACTION_LABELS: Record<string, string> = {
   import: 'Import', export: 'Export', reply: 'Reply', test: 'Test',
   toggleActive: 'Toggle', managePipelines: 'Manage', manageSettings: 'Settings',
   manageUsers: 'Users', manageApi: 'API', manageIntegrations: 'Integrations',
-  manageCustomFields: 'Custom Fields',
+  manageCustomFields: 'Custom Fields', manage: 'Manage',
 }
 
 const inputClass = 'w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#415A77] focus:ring-2 focus:ring-[#415A77]/20 transition-colors'
@@ -131,8 +132,49 @@ function PermissionsAccordion({
     onChange(updated)
   }
 
+  // Set every action across every module at once. Builds the full permission
+  // object from PERMISSION_MODULES so nothing is missed (e.g. Billing).
+  function setAll(val: boolean) {
+    const updated: Record<string, any> = { ...permissions }
+    for (const mod of PERMISSION_MODULES) {
+      updated[mod.key] = { ...(updated[mod.key] ?? {}) }
+      for (const action of mod.actions) updated[mod.key][action] = val
+    }
+    onChange(updated)
+  }
+
+  const totalActions = PERMISSION_MODULES.reduce((n, m) => n + m.actions.length, 0)
+  const grantedActions = PERMISSION_MODULES.reduce(
+    (n, m) => n + m.actions.filter((a) => (permissions[m.key] ?? {})[a] === true).length,
+    0
+  )
+  const allGranted = grantedActions === totalActions
+
   return (
     <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between px-1 pb-1">
+        <span className="text-xs text-gray-500">
+          {grantedActions}/{totalActions} permissions
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            disabled={allGranted}
+            className="rounded-lg bg-[#415A77] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#0D1B2A] disabled:opacity-40 disabled:cursor-default transition-colors"
+          >
+            Select All
+          </button>
+          <button
+            type="button"
+            onClick={() => setAll(false)}
+            disabled={grantedActions === 0}
+            className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-default transition-colors"
+          >
+            Clear All
+          </button>
+        </div>
+      </div>
       {PERMISSION_MODULES.map((mod) => {
         const isOpen = open.has(mod.key)
         const modPerms = permissions[mod.key] ?? {}
