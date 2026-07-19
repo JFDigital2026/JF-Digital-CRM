@@ -15,6 +15,33 @@ function stripBrackets(host: string): string {
   return host.replace(/^\[/, '').replace(/\]$/, '')
 }
 
+/**
+ * Explicit opt-in escape hatch for trusted internal targets (e.g. a self-hosted
+ * n8n running on localhost during development). Set WEBHOOK_ALLOWED_LOCAL_HOSTS
+ * to a comma-separated list of `host` or `host:port` entries. Empty/unset (the
+ * default, and the correct production value) preserves the strict SSRF policy —
+ * nothing is exempted. Matching an entry bypasses ONLY the private/loopback
+ * rejection; the http(s) scheme check still applies.
+ */
+function allowlistedLocalHosts(): Set<string> {
+  const raw = process.env.WEBHOOK_ALLOWED_LOCAL_HOSTS
+  if (!raw) return new Set()
+  return new Set(
+    raw
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean)
+  )
+}
+
+function isAllowlistedLocalHost(url: URL): boolean {
+  const set = allowlistedLocalHosts()
+  if (set.size === 0) return false
+  const host = stripBrackets(url.hostname).toLowerCase()
+  const hostPort = url.port ? `${host}:${url.port}` : host
+  return set.has(host) || set.has(hostPort)
+}
+
 export function isPrivateIp(ip: string): boolean {
   if (net.isIPv4(ip)) {
     const p = ip.split('.').map(Number)
@@ -55,6 +82,11 @@ export function validateWebhookUrlSync(
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { ok: false, reason: 'Only http(s) URLs are allowed' }
   }
+  // Explicitly trusted internal target (opt-in via env) — skip the internal-host
+  // rejection but keep the scheme check that ran above.
+  if (isAllowlistedLocalHost(url)) {
+    return { ok: true, url }
+  }
   const host = stripBrackets(url.hostname).toLowerCase()
   if (
     host === 'localhost' ||
@@ -78,6 +110,10 @@ export function validateWebhookUrlSync(
 export async function assertPublicWebhookUrl(raw: string): Promise<void> {
   const sync = validateWebhookUrlSync(raw)
   if (!sync.ok) throw new Error(sync.reason)
+
+  // Trusted internal target (opt-in via env): already accepted by the sync
+  // check; skip DNS re-validation so its loopback IP is not re-rejected here.
+  if (isAllowlistedLocalHost(sync.url)) return
 
   const host = stripBrackets(sync.url.hostname)
   if (net.isIP(host)) return // literal IP already validated
