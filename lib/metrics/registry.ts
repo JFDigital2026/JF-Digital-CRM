@@ -1,3 +1,4 @@
+import { prisma } from '@/lib/prisma'
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -5,6 +6,11 @@ import {
   type MetricCatalogEntry,
   type MetricDefinition,
 } from '@/lib/metrics/types'
+import {
+  findCustomMetricDefinition,
+  getCustomMetricDefinitions,
+  getCustomMetricRows,
+} from '@/lib/metrics/custom-server'
 import { outboundMetrics } from '@/lib/metrics/definitions/outbound'
 import { revenueMetrics, pricingMetrics } from '@/lib/metrics/definitions/revenue'
 import { pipelineMetrics, conversionMetrics } from '@/lib/metrics/definitions/pipeline'
@@ -94,6 +100,81 @@ export function getCatalogStats() {
     total: entries.length,
     available: entries.filter((e) => e.available).length,
     unavailable: entries.filter((e) => !e.available).length,
+    categories: CATEGORY_ORDER.length,
+  }
+}
+
+// ─── Hybrid lookup: code registry + user-created metrics ─────────────────────
+// Custom metrics live in the database but resolve through this same registry, so
+// once created they are indistinguishable from a built-in metric everywhere
+// downstream. Anything resolving an id from request input must use these async
+// functions — the synchronous ones above see code metrics only.
+
+/** Resolve any metric id, code-defined or user-created. */
+export async function resolveMetricDefinition(
+  id: string
+): Promise<MetricDefinition | undefined> {
+  const builtIn = METRIC_REGISTRY.get(id)
+  if (builtIn) return builtIn
+  return findCustomMetricDefinition(id)
+}
+
+/** Whether an id names a real metric. Used to reject unknown ids on write. */
+export async function isKnownMetricAsync(id: string): Promise<boolean> {
+  return (await resolveMetricDefinition(id)) !== undefined
+}
+
+/**
+ * Full catalog for the picker: code metrics plus user-created ones.
+ *
+ * A custom metric with no values recorded yet is marked unavailable with a
+ * "no values recorded" reason rather than dropped, so it is visible in the
+ * picker and renders an em dash instead of a zero that would read as a real
+ * result.
+ */
+export async function getFullCatalog(): Promise<MetricCatalogEntry[]> {
+  const [rows, custom] = await Promise.all([
+    getCustomMetricRows(),
+    getCustomMetricDefinitions(),
+  ])
+
+  const counts = rows.length
+    ? await prisma.customMetricValue.groupBy({
+        by: ['customMetricId'],
+        _count: { _all: true },
+      })
+    : []
+  const countByMetric = new Map(counts.map((c) => [c.customMetricId, c._count._all]))
+
+  const customEntries: MetricCatalogEntry[] = custom.map((def, index) => {
+    const row = rows[index]
+    const valueCount = countByMetric.get(row.id) ?? 0
+    return {
+      ...toCatalogEntry(def),
+      available: valueCount > 0,
+      unavailableReason: valueCount > 0 ? undefined : 'needs-values',
+      unavailableLabel: valueCount > 0 ? undefined : UNAVAILABLE_LABELS['needs-values'],
+      isCustom: true,
+      customMetricId: row.id,
+      aggregation: row.aggregation,
+      valueCount,
+    }
+  })
+
+  return [...getCatalog(), ...customEntries].sort((a, b) => {
+    const byCategory =
+      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+    return byCategory !== 0 ? byCategory : a.label.localeCompare(b.label)
+  })
+}
+
+export async function getFullCatalogStats() {
+  const entries = await getFullCatalog()
+  return {
+    total: entries.length,
+    available: entries.filter((e) => e.available).length,
+    unavailable: entries.filter((e) => !e.available).length,
+    custom: entries.filter((e) => e.isCustom).length,
     categories: CATEGORY_ORDER.length,
   }
 }

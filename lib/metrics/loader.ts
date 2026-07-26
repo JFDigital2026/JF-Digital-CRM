@@ -340,6 +340,39 @@ export class MetricLoader {
     )
   }
 
+  // ─── User-defined custom metrics ───────────────────────────────────────────
+  // Both accessors load every custom metric's values at once and are memoised,
+  // so a view holding ten custom metrics costs two queries, not twenty.
+
+  /** All custom values inside the window, for SUM / AVERAGE / MAX / MIN. */
+  customValuesInWindow() {
+    return this.memo('customValuesInWindow', () =>
+      prisma.customMetricValue.findMany({
+        where: { date: this.window },
+        select: { customMetricId: true, date: true, value: true },
+        orderBy: { date: 'asc' },
+      })
+    )
+  }
+
+  /**
+   * Most recent value at or before the end of the window, per metric.
+   *
+   * LATEST deliberately looks back beyond the window: a headcount or a running
+   * balance recorded two months ago is still the current value, and reporting
+   * "no data" for a quiet month would be wrong.
+   */
+  customValuesLatest() {
+    return this.memo('customValuesLatest', () =>
+      prisma.customMetricValue.findMany({
+        where: { date: { lte: this.range.to } },
+        select: { customMetricId: true, date: true, value: true },
+        orderBy: { date: 'desc' },
+        distinct: ['customMetricId'],
+      })
+    )
+  }
+
   // ─── Manual targets ────────────────────────────────────────────────────────
 
   targets() {

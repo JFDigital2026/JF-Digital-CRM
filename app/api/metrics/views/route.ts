@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/permissions'
-import { isKnownMetric } from '@/lib/metrics/registry'
+import { isKnownMetricAsync } from '@/lib/metrics/registry'
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(60),
@@ -61,9 +61,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  // Only ids that exist in the code registry are ever persisted. This is the
-  // guard that keeps a config row from being able to describe a query.
-  const metricIds = (body.metricIds ?? []).filter(isKnownMetric)
+  // Only ids that exist in the registry — code-defined or user-created — are
+  // ever persisted. This is the guard that keeps a config row from being able to
+  // describe a query.
+  const requested = body.metricIds ?? []
+  const known = await Promise.all(requested.map(isKnownMetricAsync))
+  const metricIds = requested.filter((_, i) => known[i])
 
   // Slug is user-visible in the ?view= param, so collisions must be resolved
   // rather than surfaced as a unique-constraint error.

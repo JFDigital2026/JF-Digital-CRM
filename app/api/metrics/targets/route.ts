@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/permissions'
-import { isKnownMetric } from '@/lib/metrics/registry'
+import { isKnownMetricAsync } from '@/lib/metrics/registry'
 
 const putSchema = z.object({
   metricId: z.string().min(1),
@@ -30,7 +30,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  if (!isKnownMetric(body.metricId)) {
+  if (!(await isKnownMetricAsync(body.metricId))) {
     return NextResponse.json({ error: 'Unknown metric' }, { status: 400 })
   }
 

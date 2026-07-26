@@ -3,10 +3,13 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, BarChart3, ChevronRight, Target, ArrowLeft, Sparkles } from 'lucide-react'
+import { Plus, Trash2, BarChart3, ChevronRight, Target, ArrowLeft, Sparkles, PencilLine } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import type { MetricCatalogEntry } from '@/lib/metrics/types'
+import { CreateMetricModal } from '@/components/metrics/create-metric-modal'
+import { RecordValuesModal, type CustomMetricSummary } from '@/components/metrics/record-values-modal'
+import { AGGREGATION_LABELS, UNIT_OPTIONS } from '@/lib/metrics/custom'
+import { CATEGORY_LABELS, type MetricCatalogEntry, type MetricCategory } from '@/lib/metrics/types'
 
 const inputClass =
   'w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#415A77] focus:ring-2 focus:ring-[#415A77]/20 transition-colors'
@@ -25,6 +28,19 @@ interface MetricTarget {
   metricId: string
   value: number
   period: string
+}
+
+interface CustomMetric {
+  id: string
+  key: string
+  label: string
+  description: string
+  unit: string
+  category: string
+  aggregation: 'SUM' | 'AVERAGE' | 'LATEST' | 'MAX' | 'MIN'
+  higherIsBetter: boolean
+  metricId: string
+  _count: { values: number }
 }
 
 /** Metrics that gate a "vs target" card and therefore need a number entered. */
@@ -47,17 +63,23 @@ export default function MetricsSettingsPage() {
   const [error, setError] = useState('')
   const [targetDrafts, setTargetDrafts] = useState<Record<string, string>>({})
   const [savingTarget, setSavingTarget] = useState<string | null>(null)
+  const [customMetrics, setCustomMetrics] = useState<CustomMetric[]>([])
+  const [showCreate, setShowCreate] = useState(false)
+  const [recordFor, setRecordFor] = useState<CustomMetricSummary | null>(null)
+  const [deleteMetricId, setDeleteMetricId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [viewsRes, registryRes, targetsRes] = await Promise.all([
+      const [viewsRes, registryRes, targetsRes, customRes] = await Promise.all([
         fetch('/api/metrics/views'),
         fetch('/api/metrics/registry'),
         fetch('/api/metrics/targets'),
+        fetch('/api/metrics/custom'),
       ])
       if (viewsRes.ok) setViews(await viewsRes.json())
       if (registryRes.ok) setCatalog((await registryRes.json()).metrics ?? [])
+      if (customRes.ok) setCustomMetrics(await customRes.json())
       if (targetsRes.ok) {
         const t: MetricTarget[] = await targetsRes.json()
         setTargets(t)
@@ -102,6 +124,15 @@ export default function MetricsSettingsPage() {
     setDeleteId(null)
     load()
   }
+
+  const handleDeleteMetric = async () => {
+    if (!deleteMetricId) return
+    await fetch(`/api/metrics/custom/${deleteMetricId}`, { method: 'DELETE' })
+    setDeleteMetricId(null)
+    load()
+  }
+
+  const deletingMetric = customMetrics.find((m) => m.id === deleteMetricId)
 
   const saveTarget = async (metricId: string) => {
     const raw = targetDrafts[metricId]?.trim()
@@ -236,6 +267,89 @@ export default function MetricsSettingsPage() {
         </div>
       )}
 
+      {/* ─── Custom metrics ─────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mt-10 mb-1">
+        <h2 className="text-sm font-semibold" style={{ color: '#1B263B' }}>
+          Your own metrics
+        </h2>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white transition-opacity"
+          style={{ background: '#415A77' }}
+        >
+          <Plus size={14} />
+          Create
+        </button>
+      </div>
+      <p className="text-sm mb-3" style={{ color: '#778DA9' }}>
+        For anything the CRM has no data for — LinkedIn requests sent, content
+        published, ad spend. Record the numbers yourself or push them in from n8n,
+        and they behave like any other KPI in the picker.
+      </p>
+
+      {customMetrics.length === 0 ? (
+        <div
+          className="rounded-xl p-6 text-center"
+          style={{ background: 'rgba(13,27,42,0.02)', border: '1px dashed rgba(13,27,42,0.12)' }}
+        >
+          <p className="text-sm" style={{ color: '#778DA9' }}>
+            No custom metrics yet. Create one and it joins the {catalog.length} built-in KPIs.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {customMetrics.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center gap-3 rounded-xl px-4 py-3"
+              style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(13,27,42,0.07)' }}
+            >
+              <div className="p-2 rounded-lg shrink-0" style={{ background: 'rgba(65,90,119,0.10)' }}>
+                <Sparkles size={16} style={{ color: '#415A77' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: '#1B263B' }}>
+                  {m.label}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#778DA9' }}>
+                  {CATEGORY_LABELS[m.category as MetricCategory] ?? m.category}
+                  {' · '}
+                  {UNIT_OPTIONS.find((u) => u.value === m.unit)?.label ?? m.unit}
+                  {' · '}
+                  {AGGREGATION_LABELS[m.aggregation].toLowerCase()}
+                  {' · '}
+                  {m._count.values === 0 ? (
+                    <span style={{ color: '#C0392B' }}>no values yet</span>
+                  ) : (
+                    `${m._count.values} ${m._count.values === 1 ? 'entry' : 'entries'}`
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() =>
+                  setRecordFor({
+                    id: m.id, key: m.key, label: m.label,
+                    unit: m.unit, aggregation: m.aggregation, metricId: m.metricId,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md shrink-0 transition-colors hover:bg-[rgba(65,90,119,0.08)]"
+                style={{ color: '#415A77' }}
+              >
+                <PencilLine size={13} />
+                Record values
+              </button>
+              <button
+                onClick={() => setDeleteMetricId(m.id)}
+                className="p-1.5 rounded-md shrink-0 transition-colors hover:bg-[rgba(192,57,43,0.08)]"
+                aria-label={`Delete ${m.label}`}
+              >
+                <Trash2 size={15} style={{ color: '#C0392B' }} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ─── Targets ────────────────────────────────────────────────────── */}
       <h2 className="text-sm font-semibold mt-10 mb-1" style={{ color: '#1B263B' }}>
         Targets
@@ -297,6 +411,39 @@ export default function MetricsSettingsPage() {
         destructive
         onConfirm={handleDelete}
         onClose={() => setDeleteId(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteMetricId}
+        title={`Delete "${deletingMetric?.label ?? 'this metric'}"?`}
+        description={
+          deletingMetric
+            ? `Every recorded value is deleted with it${
+                deletingMetric._count.values > 0
+                  ? ` (${deletingMetric._count.values} ${
+                      deletingMetric._count.values === 1 ? 'entry' : 'entries'
+                    })`
+                  : ''
+              }, and it is removed from any view using it. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleDeleteMetric}
+        onClose={() => setDeleteMetricId(null)}
+      />
+
+      <CreateMetricModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={load}
+      />
+
+      <RecordValuesModal
+        metric={recordFor}
+        open={!!recordFor}
+        onClose={() => setRecordFor(null)}
+        onChanged={load}
       />
     </div>
   )

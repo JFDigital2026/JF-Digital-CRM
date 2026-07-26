@@ -173,6 +173,7 @@ model User {
   emailTemplates    EmailTemplate[]
   emailSignatures   EmailSignature[]
   metricViews       MetricView[]
+  customMetrics     CustomMetric[]
 
   createdByUser User?  @relation("UserCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   createdUsers  User[] @relation("UserCreatedBy")
@@ -986,6 +987,67 @@ model OutboundDailyStat {
   syncedAt        DateTime @default(now())
   createdAt       DateTime @default(now())
 
+  @@index([date])
+}
+
+// User-defined metrics for things the CRM has no data for — LinkedIn requests
+// sent, content published, ad spend. The definition lives here rather than in
+// lib/metrics/registry.ts, but resolution goes through the same registry so a
+// custom metric is indistinguishable from a built-in one once created.
+//
+// A custom metric never generates a query from its config: its resolver is a
+// fixed aggregate over CustomMetricValue, parameterised by id. Same guarantee
+// as the code registry.
+
+enum MetricAggregation {
+  SUM
+  AVERAGE
+  LATEST
+  MAX
+  MIN
+}
+
+enum MetricValueSource {
+  MANUAL
+  API
+}
+
+model CustomMetric {
+  id             String            @id @default(cuid())
+  key            String            @unique
+  label          String
+  category       String            @default("custom")
+  unit           String            @default("number")
+  description    String            @default("")
+  aggregation    MetricAggregation @default(SUM)
+  higherIsBetter Boolean           @default(true)
+  createdById    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  createdBy User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  values    CustomMetricValue[]
+
+  @@index([key])
+  @@index([category])
+}
+
+model CustomMetricValue {
+  id             String            @id @default(cuid())
+  customMetricId String
+  date           DateTime
+  value          Float
+  note           String?
+  source         MetricValueSource @default(MANUAL)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  metric CustomMetric @relation(fields: [customMetricId], references: [id], onDelete: Cascade)
+
+  // One value per metric per day, so re-entering a date corrects it rather than
+  // adding a second point — same idempotency the outbound stats ingest relies on.
+  @@unique([customMetricId, date])
+  @@index([customMetricId])
   @@index([date])
 }
 

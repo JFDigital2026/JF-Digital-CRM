@@ -8,7 +8,7 @@ import {
 import {
   Mail, Users, Kanban, Target, Calendar, DollarSign, Scale,
   Wrench, HeartHandshake, FileText, Activity, Megaphone,
-  Lock, AlertTriangle, type LucideIcon,
+  Lock, AlertTriangle, Sparkles, type LucideIcon,
 } from 'lucide-react'
 import { StatCard } from '@/components/ui/stat-card'
 import { formatMetricValue, deltaDirection } from '@/lib/metrics/format'
@@ -27,6 +27,7 @@ const CATEGORY_ICONS: Record<MetricCategory, LucideIcon> = {
   admin: FileText,
   system: Activity,
   marketing: Megaphone,
+  custom: Sparkles,
 }
 
 const CHART_COLOR = '#415A77'
