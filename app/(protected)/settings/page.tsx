@@ -16,7 +16,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { CRMAvatar } from '@/components/ui/crm-avatar'
 import { format, formatDistanceToNow } from 'date-fns'
-import { ROLE_PRESETS, getPresetForRole, type PermissionsJson } from '@/lib/rolePresets'
+import { ROLE_PRESETS, getPresetForRole, resolveEffectivePermissions, type PermissionsJson } from '@/lib/rolePresets'
 import { SlideOver } from '@/components/ui/slide-over'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -510,7 +510,12 @@ function EditUserSlideOver({ user, open, onClose, onSuccess }: {
       setFirstName(user.firstName); setLastName(user.lastName)
       setEmail(user.email); setRole(user.role)
       setDepartment(user.department ?? ''); setTitle(user.title ?? '')
-      setPermissions(user.permissions); setError('')
+      // Load the *effective* set, not the raw stored record. A record saved
+      // before a permission existed has no key for it; showing that as an
+      // unticked box would disagree with what the server actually enforces, and
+      // saving it back would write an explicit denial the admin never chose.
+      setPermissions(resolveEffectivePermissions(user.role, user.permissions))
+      setError('')
     }
   }, [user])
 

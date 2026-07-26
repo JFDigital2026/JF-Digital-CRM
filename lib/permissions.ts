@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { NextResponse } from 'next/server'
 import type { Session } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getPresetForRole } from '@/lib/rolePresets'
+import { resolveEffectivePermissions } from '@/lib/rolePresets'
 
 export function checkPermission(
   permissions: Record<string, any>,
@@ -18,15 +18,14 @@ export function checkPermission(
 
 /**
  * Boolean permission check against an already-loaded session. Mirrors the
- * resolution logic in requirePermission (stored perms, else role preset, ADMIN
- * always true) for callers that need to branch on a permission without returning
- * a response — e.g. picking the right module based on a record's relations.
+ * resolution logic in requirePermission (stored overrides layered on the role
+ * preset, ADMIN always true) for callers that need to branch on a permission
+ * without returning a response — e.g. picking the right module based on a
+ * record's relations.
  */
 export function can(session: Session, module: string, action: string): boolean {
   const role = session.user.role
-  const stored = session.user.permissions
-  const perms =
-    stored && Object.keys(stored).length > 0 ? stored : getPresetForRole(role)
+  const perms = resolveEffectivePermissions(role, session.user.permissions)
   return checkPermission(perms as Record<string, any>, role, module, action)
 }
 
@@ -43,9 +42,9 @@ export type PermissionResult =
  *   const session = auth.session
  *
  * Reads role + permissions from the session JWT (no DB round-trip). ADMIN always
- * passes. If a token predates the permissions field, we fall back to the role's
- * preset so existing sessions map to their role's capabilities instead of being
- * locked out.
+ * passes. Stored overrides are layered on the role preset, so a permission added
+ * to the code after a user's record was saved falls back to their role's default
+ * rather than reading as an explicit denial.
  */
 export async function requirePermission(
   module: string,
@@ -60,9 +59,7 @@ export async function requirePermission(
   }
 
   const role = session.user.role
-  const stored = session.user.permissions
-  const perms =
-    stored && Object.keys(stored).length > 0 ? stored : getPresetForRole(role)
+  const perms = resolveEffectivePermissions(role, session.user.permissions)
 
   if (!checkPermission(perms as Record<string, any>, role, module, action)) {
     return {
