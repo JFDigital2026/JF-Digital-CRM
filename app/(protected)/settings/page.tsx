@@ -8,7 +8,7 @@ import {
   Kanban, Calendar, Sliders, Database, Mail,
   Users as UsersIcon, Plus, MoreHorizontal, Shield,
   CheckCircle2, XCircle, Clock, RefreshCw, Lock,
-  Eye, EyeOff, ChevronDown, ChevronUp,
+  Eye, EyeOff, ChevronDown, ChevronUp, BarChart2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { TabGroup } from '@/components/ui/tab-group'
@@ -68,7 +68,7 @@ const PERMISSION_MODULES = [
   { key: 'automations',  label: 'Automations',  actions: ['view','test','toggleActive'] },
   { key: 'metrics',      label: 'Metrics',      actions: ['view','export'] },
   { key: 'aiAssistant',  label: 'AI Assistant', actions: ['view'] },
-  { key: 'settings',     label: 'Settings',     actions: ['view','manageUsers','manageApi','manageIntegrations','manageCustomFields'] },
+  { key: 'settings',     label: 'Settings',     actions: ['view','manageUsers','manageApi','manageIntegrations','manageCustomFields','manageMetrics'] },
 ]
 
 const ACTION_LABELS: Record<string, string> = {
@@ -76,7 +76,7 @@ const ACTION_LABELS: Record<string, string> = {
   import: 'Import', export: 'Export', reply: 'Reply', test: 'Test',
   toggleActive: 'Toggle', managePipelines: 'Manage', manageSettings: 'Settings',
   manageUsers: 'Users', manageApi: 'API', manageIntegrations: 'Integrations',
-  manageCustomFields: 'Custom Fields', manage: 'Manage',
+  manageCustomFields: 'Custom Fields', manage: 'Manage', manageMetrics: 'Metric Views',
 }
 
 const inputClass = 'w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#415A77] focus:ring-2 focus:ring-[#415A77]/20 transition-colors'
@@ -96,6 +96,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { href: '/settings/custom-fields', icon: Database, title: 'Custom Fields', description: 'Add extra fields to contact profiles.' },
       { href: '/settings/custom-values', icon: Tag, title: 'Custom Values', description: 'Manage merge tags for templates and outreach.' },
       { href: '/settings/email', icon: Mail, title: 'Email', description: 'Create reusable email templates and signatures.' },
+      { href: '/settings/metrics', icon: BarChart2, title: 'Metrics', description: 'Build custom metric views and set KPI targets.' },
     ],
   },
   {

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { seedMetricViews } from './seedMetricViews'
 
 const prisma = new PrismaClient()
 
@@ -101,6 +102,9 @@ async function main() {
   } else {
     console.log('Monthly Retainer product already exists, skipping.')
   }
+
+  // ─── Default metric views ──────────────────────────────────────────────────
+  await seedMetricViews(prisma, admin.id)
 }
 
 main()
