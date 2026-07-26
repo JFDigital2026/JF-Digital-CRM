@@ -2,7 +2,7 @@ import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
-import { ADMIN_PERMISSIONS, getPresetForRole } from '@/lib/rolePresets'
+import { ADMIN_PERMISSIONS, resolveEffectivePermissions } from '@/lib/rolePresets'
 import { rateLimit } from '@/lib/rate-limit'
 
 // Re-validate a live JWT against the DB at most this often (seconds). Bounds how
@@ -11,8 +11,11 @@ const REVALIDATE_INTERVAL = 60
 
 function resolvePermissions(role: string, stored: unknown): Record<string, any> {
   if (role === 'ADMIN') return ADMIN_PERMISSIONS
-  const perms = (stored as Record<string, any>) ?? {}
-  return Object.keys(perms).length > 0 ? perms : getPresetForRole(role)
+  // Layer stored overrides on the role preset rather than letting a saved record
+  // replace it outright. A record written before a permission existed has no key
+  // for it, and an absent key would otherwise read as an explicit denial —
+  // silently locking users out of every newly added feature.
+  return resolveEffectivePermissions(role, stored)
 }
 
 export const authOptions: NextAuthOptions = {

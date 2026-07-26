@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { checkPermission } from '@/lib/permissions'
-import { getPresetForRole } from '@/lib/rolePresets'
+import { resolveEffectivePermissions } from '@/lib/rolePresets'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -244,10 +244,10 @@ export async function POST(req: Request) {
 
   const toolCtx = {
     role: session.user.role,
-    permissions:
-      session.user.permissions && Object.keys(session.user.permissions).length > 0
-        ? session.user.permissions
-        : getPresetForRole(session.user.role),
+    permissions: resolveEffectivePermissions(
+      session.user.role,
+      session.user.permissions
+    ),
   }
 
   const { messages, context, conversationId } = await req.json() as {

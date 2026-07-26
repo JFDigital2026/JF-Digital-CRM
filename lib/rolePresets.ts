@@ -89,3 +89,39 @@ export const ROLE_PRESETS: Record<string, PermissionsJson> = {
 export function getPresetForRole(role: string): PermissionsJson {
   return ROLE_PRESETS[role] ?? SALES_REP_PERMISSIONS
 }
+
+/**
+ * Resolve a user's effective permissions: their stored overrides layered on top
+ * of their role's preset.
+ *
+ * Why layered rather than "stored wins outright": a permissions record is a
+ * snapshot of the modules that existed when it was last saved. Every time a new
+ * permission is added to PermissionsJson, every previously-saved record lacks
+ * that key — and `mod[action] === true` on an absent key is false. The result is
+ * a user with "full permissions" in the editor silently losing access to each
+ * new feature until an admin re-saves them, one user at a time.
+ *
+ * Layering fixes that permanently: a key the user has an explicit value for
+ * (including `false`) is respected, and a key they have never been asked about
+ * falls back to what their role would grant. This can never grant more than the
+ * role preset already allows, so it does not widen anyone's access.
+ */
+export function resolveEffectivePermissions(
+  role: string,
+  stored: unknown
+): PermissionsJson {
+  const preset = getPresetForRole(role)
+  const overrides = (stored ?? {}) as Record<string, Record<string, boolean>>
+  if (Object.keys(overrides).length === 0) return preset
+
+  const merged: Record<string, Record<string, boolean>> = {}
+  for (const [module, actions] of Object.entries(preset as unknown as Record<string, Record<string, boolean>>)) {
+    merged[module] = { ...actions, ...(overrides[module] ?? {}) }
+  }
+  // Keep any module present in the stored record but absent from the preset, so
+  // a permission removed from the code doesn't silently drop a user's override.
+  for (const [module, actions] of Object.entries(overrides)) {
+    if (!merged[module]) merged[module] = { ...actions }
+  }
+  return merged as unknown as PermissionsJson
+}
