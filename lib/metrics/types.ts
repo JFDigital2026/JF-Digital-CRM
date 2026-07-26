@@ -29,6 +29,7 @@ export type MetricCategory =
   | 'admin'
   | 'system'
   | 'marketing'
+  | 'custom'
 
 export const CATEGORY_LABELS: Record<MetricCategory, string> = {
   outbound: 'Outbound / Cold Email',
@@ -43,6 +44,7 @@ export const CATEGORY_LABELS: Record<MetricCategory, string> = {
   admin: 'Admin & Cash',
   system: 'System & Automation Health',
   marketing: 'Marketing & Inbound',
+  custom: 'Custom',
 }
 
 export const CATEGORY_ORDER: MetricCategory[] = [
@@ -58,6 +60,7 @@ export const CATEGORY_ORDER: MetricCategory[] = [
   'admin',
   'system',
   'marketing',
+  'custom',
 ]
 
 /**
@@ -75,6 +78,7 @@ export type UnavailableReason =
   | 'needs-target'
   | 'needs-outbound-sync'
   | 'needs-lead-gen-field'
+  | 'needs-values'
 
 export const UNAVAILABLE_LABELS: Record<UnavailableReason, string> = {
   'needs-delivery-tracking': 'Needs delivery stage tracking',
@@ -85,6 +89,7 @@ export const UNAVAILABLE_LABELS: Record<UnavailableReason, string> = {
   'needs-target': 'Set a target in Settings → Metrics',
   'needs-outbound-sync': 'Waiting on the first Lead Gen sync',
   'needs-lead-gen-field': 'Needs an extra field from Lead Gen',
+  'needs-values': 'No values recorded yet',
 }
 
 export type SeriesPoint = { date: string; value: number }
@@ -151,4 +156,10 @@ export interface MetricCatalogEntry {
   available: boolean
   unavailableReason?: UnavailableReason
   unavailableLabel?: string
+  /** True for user-created metrics, which can be edited and deleted. */
+  isCustom?: boolean
+  /** CustomMetric row id, for the edit/delete routes. Absent on code metrics. */
+  customMetricId?: string
+  aggregation?: 'SUM' | 'AVERAGE' | 'LATEST' | 'MAX' | 'MIN'
+  valueCount?: number
 }

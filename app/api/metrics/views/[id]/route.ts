@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/permissions'
-import { isKnownMetric } from '@/lib/metrics/registry'
+import { isKnownMetricAsync } from '@/lib/metrics/registry'
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
@@ -68,7 +68,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // Items are replaced wholesale rather than diffed — the editor always sends
   // the full ordered list, and a replace keeps order contiguous for free.
   if (body.items) {
-    const known = body.items.filter((i) => isKnownMetric(i.metricId))
+    const checks = await Promise.all(body.items.map((i) => isKnownMetricAsync(i.metricId)))
+    const known = body.items.filter((_, i) => checks[i])
     await prisma.$transaction([
       prisma.metricViewItem.deleteMany({ where: { viewId: params.id } }),
       prisma.metricViewItem.createMany({

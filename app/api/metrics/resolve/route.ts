@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requirePermission } from '@/lib/permissions'
 import { parseRange, getGranularity } from '@/lib/metrics'
 import { MetricLoader } from '@/lib/metrics/loader'
-import { getMetric } from '@/lib/metrics/registry'
+import { resolveMetricDefinition } from '@/lib/metrics/registry'
 import type { MetricResult } from '@/lib/metrics/types'
 
 const MAX_METRICS = 60
@@ -50,14 +50,22 @@ export async function POST(req: Request) {
   const prevLoader = new MetricLoader(prevRange)
   const trendSet = new Set(trendIds)
 
-  // Unknown ids are dropped here, before anything touches the database. A view
-  // holding an id that no longer exists in the registry degrades to an
-  // "unavailable" card rather than failing the whole request.
-  const unknown = metricIds.filter((id) => !getMetric(id))
+  // Resolve every id against the registry (code metrics plus user-created ones)
+  // up front. Unknown ids never reach a query: a view holding an id that no
+  // longer exists degrades to an "unavailable" card rather than failing the
+  // whole request.
+  const definitions = new Map(
+    await Promise.all(
+      metricIds.map(
+        async (id) => [id, await resolveMetricDefinition(id)] as const
+      )
+    )
+  )
+  const unknown = metricIds.filter((id) => !definitions.get(id))
 
   const entries = await Promise.all(
     metricIds.map(async (id): Promise<[string, MetricResult]> => {
-      const def = getMetric(id)
+      const def = definitions.get(id)
       if (!def) return [id, { value: null, unavailable: 'needs-manual-entry' }]
       if (def.unavailable || !def.resolve) {
         return [id, { value: null, unavailable: def.unavailable ?? 'needs-manual-entry' }]
