@@ -14,6 +14,8 @@ import {
 import { PageHeader } from '@/components/ui/page-header'
 import { StatCard } from '@/components/ui/stat-card'
 import { TabGroup } from '@/components/ui/tab-group'
+import { CustomMetricView, type CustomViewDefinition } from '@/components/metrics/custom-metric-view'
+import { UNAVAILABLE_LABELS, type MetricCatalogEntry } from '@/lib/metrics/types'
 import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -629,8 +631,22 @@ export default function MetricsPage() {
   const [loadingOverview, setLoadingOverview] = useState(true)
   const [loadingTab, setLoadingTab] = useState(true)
 
+  // Custom views defined in Settings → Metrics. They append to the tab bar; the
+  // six built-in tabs above and their API routes are untouched.
+  const [customViews, setCustomViews] = useState<CustomViewDefinition[]>([])
+  const [catalog, setCatalog] = useState<MetricCatalogEntry[]>([])
+  const [unavailableLabels, setUnavailableLabels] = useState<Record<string, string>>({})
+
   const range = rangeKey === 'custom' ? customRange : computeRange(rangeKey)
   const qs = `from=${range.from}&to=${range.to}`
+
+  const activeCustomView = customViews.find((v) => `view:${v.slug}` === activeTab)
+  const isCustomTab = !!activeCustomView
+
+  const tabs = [
+    ...TABS,
+    ...customViews.map((v) => ({ key: `view:${v.slug}`, label: v.name })),
+  ]
 
   const fetchOverview = useCallback(async () => {
     setLoadingOverview(true)
@@ -641,6 +657,10 @@ export default function MetricsPage() {
   }, [qs])
 
   const fetchTab = useCallback(async () => {
+    // Custom views resolve themselves through /api/metrics/resolve. Clear the
+    // built-in tab's data on the way past, or Export CSV would silently export
+    // whichever tab was open before this one.
+    if (activeTab.startsWith('view:')) { setTabData(null); setLoadingTab(false); return }
     setLoadingTab(true)
     setTabData(null)
     try {
@@ -648,6 +668,32 @@ export default function MetricsPage() {
       if (res.ok) setTabData(await res.json())
     } finally { setLoadingTab(false) }
   }, [activeTab, qs])
+
+  // Views and the catalog load once — both are small and change rarely.
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const [viewsRes, registryRes] = await Promise.all([
+          fetch('/api/metrics/views'),
+          fetch('/api/metrics/registry'),
+        ])
+        if (viewsRes.ok) {
+          const views: CustomViewDefinition[] = await viewsRes.json()
+          setCustomViews(views)
+          // Deep link from Settings → Metrics: ?view=<slug> opens that tab.
+          const slug = new URLSearchParams(window.location.search).get('view')
+          if (slug && views.some((v) => v.slug === slug)) setActiveTab(`view:${slug}`)
+        }
+        if (registryRes.ok) {
+          const data = await registryRes.json()
+          setCatalog(data.metrics ?? [])
+          setUnavailableLabels(UNAVAILABLE_LABELS)
+        }
+      } catch {
+        // A failed views fetch must not take the built-in tabs down with it.
+      }
+    })()
+  }, [])
 
   useEffect(() => { fetchOverview() }, [fetchOverview])
   useEffect(() => { fetchTab() }, [fetchTab])
@@ -703,11 +749,21 @@ export default function MetricsPage() {
         )}
       </div>
 
-      {/* Tab navigation */}
-      <TabGroup tabs={TABS} active={activeTab} onChange={setActiveTab} className="mb-6" />
+      {/* Tab navigation. Scrolls horizontally — custom views push the tab count
+          past what fits on a laptop, and the bar must never clip the last tab. */}
+      <div className="mb-6 -mx-1 overflow-x-auto px-1 pb-1">
+        <TabGroup tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      </div>
 
       {/* Tab content */}
-      {loadingTab ? (
+      {isCustomTab && activeCustomView ? (
+        <CustomMetricView
+          view={activeCustomView}
+          catalog={catalog}
+          range={range}
+          unavailableLabels={unavailableLabels}
+        />
+      ) : loadingTab ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[...Array(8)].map((_, i) => <div key={i} className="h-20 rounded-xl bg-gray-50 animate-pulse" />)}

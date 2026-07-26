@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { triggerAutomation } from '@/lib/automation-engine'
+import { fireWebhook } from '@/lib/webhookDelivery'
 import { requirePermission } from '@/lib/permissions'
 import { toInt, parseDateParam } from '@/lib/utils'
 
@@ -137,7 +137,14 @@ export async function POST(req: Request) {
   } catch {}
 
   // Fire automations — non-blocking
-  triggerAutomation('CONTACT_CREATED', contact.id, {}).catch(() => {})
+  fireWebhook(session.user.id, 'contact.created', {
+    contactId: contact.id,
+    firstName: contact.firstName,
+    lastName: contact.lastName,
+    email: contact.email,
+    source: contact.source,
+    leadStatus: contact.leadStatus,
+  })
 
   return NextResponse.json(contact, { status: 201 })
 }

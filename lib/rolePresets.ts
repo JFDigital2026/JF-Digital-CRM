@@ -11,7 +11,7 @@ export type PermissionsJson = {
   automations: { view: boolean; test: boolean; toggleActive: boolean }
   metrics: { view: boolean; export: boolean }
   aiAssistant: { view: boolean }
-  settings: { view: boolean; manageUsers: boolean; manageApi: boolean; manageIntegrations: boolean; manageCustomFields: boolean }
+  settings: { view: boolean; manageUsers: boolean; manageApi: boolean; manageIntegrations: boolean; manageCustomFields: boolean; manageMetrics: boolean }
 }
 
 export const ADMIN_PERMISSIONS: PermissionsJson = {
@@ -27,7 +27,7 @@ export const ADMIN_PERMISSIONS: PermissionsJson = {
   automations: { view: true, test: true, toggleActive: true },
   metrics: { view: true, export: true },
   aiAssistant: { view: true },
-  settings: { view: true, manageUsers: true, manageApi: true, manageIntegrations: true, manageCustomFields: true },
+  settings: { view: true, manageUsers: true, manageApi: true, manageIntegrations: true, manageCustomFields: true, manageMetrics: true },
 }
 
 export const MANAGER_PERMISSIONS: PermissionsJson = {
@@ -43,7 +43,7 @@ export const MANAGER_PERMISSIONS: PermissionsJson = {
   automations: { view: true, test: false, toggleActive: true },
   metrics: { view: true, export: true },
   aiAssistant: { view: true },
-  settings: { view: false, manageUsers: false, manageApi: false, manageIntegrations: false, manageCustomFields: false },
+  settings: { view: false, manageUsers: false, manageApi: false, manageIntegrations: false, manageCustomFields: false, manageMetrics: false },
 }
 
 export const SALES_REP_PERMISSIONS: PermissionsJson = {
@@ -59,7 +59,7 @@ export const SALES_REP_PERMISSIONS: PermissionsJson = {
   automations: { view: true, test: false, toggleActive: false },
   metrics: { view: true, export: false },
   aiAssistant: { view: true },
-  settings: { view: false, manageUsers: false, manageApi: false, manageIntegrations: false, manageCustomFields: false },
+  settings: { view: false, manageUsers: false, manageApi: false, manageIntegrations: false, manageCustomFields: false, manageMetrics: false },
 }
 
 export const SUPPORT_PERMISSIONS: PermissionsJson = {
@@ -75,7 +75,7 @@ export const SUPPORT_PERMISSIONS: PermissionsJson = {
   automations: { view: true, test: false, toggleActive: false },
   metrics: { view: true, export: false },
   aiAssistant: { view: true },
-  settings: { view: false, manageUsers: false, manageApi: false, manageIntegrations: false, manageCustomFields: false },
+  settings: { view: false, manageUsers: false, manageApi: false, manageIntegrations: false, manageCustomFields: false, manageMetrics: false },
 }
 
 export const ROLE_PRESETS: Record<string, PermissionsJson> = {

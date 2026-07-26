@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
-import { triggerAutomation } from '@/lib/automation-engine'
+import { fireWebhook } from '@/lib/webhookDelivery'
 import { rateLimit, getIp } from '@/lib/rate-limit'
 import { createZoomMeeting } from '@/lib/zoom'
 import { createRescheduleToken } from '@/lib/reschedule-token'
@@ -399,7 +399,17 @@ export async function POST(req: Request) {
     },
   })
 
-  triggerAutomation('APPOINTMENT_BOOKED', contact.id, { calendarEventId: event.id, calendarConfigId: calId, date, time }).catch(() => {})
+  fireWebhook(config.userId, 'appointment.booked', {
+    contactId: contact.id,
+    firstName,
+    lastName,
+    email: contact.email,
+    calendarEventId: event.id,
+    calendarConfigId: calId,
+    date,
+    time,
+    startTime: startTime.toISOString(),
+  })
 
   return NextResponse.json({
     success: true,

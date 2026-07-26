@@ -12,6 +12,10 @@ const FULL_SCOPES = [
   'calendar:read', 'calendar:write',
   'messages:read', 'messages:write',
   'products:read', 'automations:trigger', 'metrics:read',
+  // Write scope for the outbound stats ingest. Create a dedicated key for the
+  // Lead Gen push holding only this — separate from the lead-import key, so a
+  // leak of one can be revoked without breaking the other.
+  'metrics:write',
 ]
 
 const READ_ONLY_SCOPES = [

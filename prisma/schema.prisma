@@ -172,6 +172,7 @@ model User {
   systemConfigs     SystemConfig[]
   emailTemplates    EmailTemplate[]
   emailSignatures   EmailSignature[]
+  metricViews       MetricView[]
 
   createdByUser User?  @relation("UserCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   createdUsers  User[] @relation("UserCreatedBy")
@@ -920,6 +921,86 @@ model MetricSnapshot {
   createdAt          DateTime @default(now())
 
   @@index([date])
+}
+
+// ─── Custom Metric Views ──────────────────────────────────────────────────────
+// A saved, user-composed metric dashboard. Renders as an extra tab on /metrics.
+// Items reference metric definitions in lib/metrics/registry.ts by string id —
+// deliberately NOT a foreign key, since definitions live in code. A view holding
+// an id that no longer exists in the registry must degrade to an "unavailable"
+// card, never crash the page.
+
+model MetricView {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  order       Int      @default(0)
+  ownerId     String
+  isShared    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items MetricViewItem[]
+
+  @@index([ownerId])
+  @@index([order])
+}
+
+model MetricViewItem {
+  id        String  @id @default(cuid())
+  viewId    String
+  metricId  String
+  order     Int     @default(0)
+  showTrend Boolean @default(false)
+
+  view MetricView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+
+  @@unique([viewId, metricId])
+  @@index([viewId])
+}
+
+// Daily rollup of cold-email outbound activity, pushed in from the Lead Gen
+// dashboard (POST /api/v1/outbound-stats). One row per calendar day, unique on
+// date so a repeated push is an idempotent upsert rather than a double-count —
+// the Lead Gen IMAP scan uses a rolling window and resends overlapping days.
+//
+// Aggregate counts ONLY. Prospect email addresses and reply snippets stay in the
+// Lead Gen datastore; the ingest endpoint rejects payloads carrying them.
+
+model OutboundDailyStat {
+  id              String   @id @default(cuid())
+  date            DateTime @unique
+  sent            Int      @default(0)
+  uniqueOpens     Int      @default(0)
+  totalOpens      Int      @default(0)
+  suppressedOpens Int      @default(0)
+  replied         Int      @default(0)
+  optedOut        Int      @default(0)
+  bounced         Int      @default(0)
+  linkedinSent    Int      @default(0)
+  windowSent      Int?
+  windowDays      Int?
+  byInbox         Json?
+  syncedAt        DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([date])
+}
+
+// Manually-entered target values for metrics that have no computable source
+// (MRR goal, delivery capacity ceiling, ad spend). Powers "vs target" cards.
+
+model MetricTarget {
+  id        String   @id @default(cuid())
+  metricId  String   @unique
+  value     Float
+  period    String   @default("month")
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([metricId])
 }
 
 // ─── Email Templates & Signatures ────────────────────────────────────────────
