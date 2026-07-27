@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type DateRangeKey = 'this_month' | 'last_month' | 'last_90' | 'last_12m' | 'custom'
+type DateRangeKey = 'last_7' | 'last_30' | 'this_month' | 'last_month' | 'last_90' | 'last_12m' | 'custom'
 
 interface DateRange { from: string; to: string }
 
@@ -107,6 +107,8 @@ const TABS = [
 const CHART_COLORS = ['#415A77', '#0D1B2A', '#778DA9', '#A8B2C1', '#D4D8DE', '#6B7FA3']
 
 const RANGE_OPTIONS: { key: DateRangeKey; label: string }[] = [
+  { key: 'last_7', label: 'Last 7 Days' },
+  { key: 'last_30', label: 'Last 30 Days' },
   { key: 'this_month', label: 'This Month' },
   { key: 'last_month', label: 'Last Month' },
   { key: 'last_90', label: 'Last 90 Days' },
@@ -114,10 +116,46 @@ const RANGE_OPTIONS: { key: DateRangeKey; label: string }[] = [
   { key: 'custom', label: 'Custom Range' },
 ]
 
+/**
+ * The range persists across reloads and navigation.
+ *
+ * Without this every visit snaps back to the default, which quietly undoes the
+ * choice each time you leave the page — the range you work in is a preference,
+ * not a per-visit decision. Stored per browser; nothing here is account state.
+ */
+const RANGE_STORAGE_KEY = 'crm.metrics.range'
+
+function loadStoredRange(): { key: DateRangeKey; custom: DateRange } | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(RANGE_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    // Reject anything that is not a key this build knows about — an option
+    // removed in a later version would otherwise render a blank range.
+    if (!RANGE_OPTIONS.some((o) => o.key === parsed?.key)) return null
+    const custom = parsed.custom
+    const valid = (d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
+    return {
+      key: parsed.key,
+      custom: valid(custom?.from) && valid(custom?.to) ? custom : computeRange('last_30'),
+    }
+  } catch {
+    return null // corrupt entry — fall back to the default rather than throwing
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function computeRange(key: DateRangeKey, custom?: DateRange): DateRange {
   const now = new Date()
+  // Trailing-window ranges are inclusive of today, so "last 7 days" spans today
+  // and the six before it — subtracting a full 7 would show eight days.
+  if (key === 'last_7' || key === 'last_30') {
+    const d = new Date(now)
+    d.setDate(d.getDate() - (key === 'last_7' ? 6 : 29))
+    return { from: d.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
+  }
   if (key === 'this_month') {
     return { from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
   }
@@ -134,7 +172,9 @@ function computeRange(key: DateRangeKey, custom?: DateRange): DateRange {
     const d = new Date(now); d.setFullYear(d.getFullYear() - 1)
     return { from: d.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
   }
-  return custom ?? { from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
+  if (custom) return custom
+  const d = new Date(now); d.setDate(d.getDate() - 29)
+  return { from: d.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
 }
 
 function fmtMoney(n: number | null | undefined): string {
@@ -623,8 +663,32 @@ function DateRangePicker({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MetricsPage() {
-  const [rangeKey, setRangeKey] = useState<DateRangeKey>('this_month')
-  const [customRange, setCustomRange] = useState<DateRange>(() => computeRange('this_month'))
+  // Default to the trailing 30 days. Reading localStorage in the initialiser
+  // would break hydration (the server has no window), so both start at the
+  // default and the stored choice is applied in an effect below.
+  const [rangeKey, setRangeKey] = useState<DateRangeKey>('last_30')
+  const [customRange, setCustomRange] = useState<DateRange>(() => computeRange('last_30'))
+  const [rangeHydrated, setRangeHydrated] = useState(false)
+
+  useEffect(() => {
+    const stored = loadStoredRange()
+    if (stored) { setRangeKey(stored.key); setCustomRange(stored.custom) }
+    setRangeHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    // Only write after the stored value has been read, or the first render would
+    // overwrite the saved choice with the default before it is applied.
+    if (!rangeHydrated) return
+    try {
+      window.localStorage.setItem(
+        RANGE_STORAGE_KEY,
+        JSON.stringify({ key: rangeKey, custom: customRange })
+      )
+    } catch {
+      /* private mode or quota — the range still works for this session */
+    }
+  }, [rangeKey, customRange, rangeHydrated])
   const [activeTab, setActiveTab] = useState('revenue')
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [tabData, setTabData] = useState<RevenueData | PipelineData | ActivityData | ConversionData | RetentionData | QualityData | null>(null)
