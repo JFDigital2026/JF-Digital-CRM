@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
-import { Plus, Trash2, Info } from 'lucide-react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Info } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { formatMetricValue } from '@/lib/metrics/format'
 import { CATEGORY_LABELS, CATEGORY_ORDER, type MetricUnit } from '@/lib/metrics/types'
@@ -19,22 +19,29 @@ const labelClass = 'block text-xs font-medium mb-1.5'
 
 type Aggregation = (typeof VALID_AGGREGATIONS)[number]
 
-interface BackfillRow {
-  date: string
-  value: string
+/** The subset of a CustomMetric the form needs to edit one. */
+export interface EditableMetric {
+  id: string
+  label: string
+  description: string
+  unit: string
+  category: string
+  aggregation: Aggregation
+  higherIsBetter: boolean
 }
 
 interface Props {
   open: boolean
   onClose: () => void
-  onCreated: () => void
+  /** Receives the metric id (`custom.<key>`) so callers can auto-add it to a view. */
+  onSaved: (metricId: string) => void
+  /** Omit to create; pass a metric to edit it in place. */
+  metric?: EditableMetric | null
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+export function CreateMetricModal({ open, onClose, onSaved, metric }: Props) {
+  const editing = !!metric
 
-export function CreateMetricModal({ open, onClose, onCreated }: Props) {
   const [label, setLabel] = useState('')
   const [description, setDescription] = useState('')
   const [unit, setUnit] = useState<MetricUnit>('number')
@@ -42,82 +49,82 @@ export function CreateMetricModal({ open, onClose, onCreated }: Props) {
   const [aggregation, setAggregation] = useState<Aggregation>('SUM')
   const [higherIsBetter, setHigherIsBetter] = useState(true)
   const [target, setTarget] = useState('')
-  const [backfill, setBackfill] = useState<BackfillRow[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const reset = () => {
-    setLabel(''); setDescription(''); setUnit('number'); setCategory('custom')
-    setAggregation('SUM'); setHigherIsBetter(true); setTarget('')
-    setBackfill([]); setError('')
-  }
+  // Load the metric being edited, or reset to defaults for a fresh create.
+  useEffect(() => {
+    if (!open) return
+    if (metric) {
+      setLabel(metric.label)
+      setDescription(metric.description ?? '')
+      setUnit(metric.unit as MetricUnit)
+      setCategory(metric.category)
+      setAggregation(metric.aggregation)
+      setHigherIsBetter(metric.higherIsBetter)
+    } else {
+      setLabel(''); setDescription(''); setUnit('number')
+      setCategory('custom'); setAggregation('SUM'); setHigherIsBetter(true)
+    }
+    setTarget(''); setError('')
+  }, [open, metric])
 
-  const close = () => { reset(); onClose() }
-
-  // Show the user what their number will actually look like on a card, so the
-  // unit choice is concrete rather than an abstract dropdown.
+  // Show what the number will actually look like on a card, so the unit choice
+  // is concrete rather than an abstract dropdown.
   const preview = useMemo(() => formatMetricValue(1234.5, unit), [unit])
-
-  const addRow = () =>
-    setBackfill((prev) => [...prev, { date: today(), value: '' }])
-
-  const updateRow = (i: number, patch: Partial<BackfillRow>) =>
-    setBackfill((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
-
-  const removeRow = (i: number) =>
-    setBackfill((prev) => prev.filter((_, idx) => idx !== i))
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!label.trim()) { setError('Give the metric a name.'); return }
 
-    // Two entries on one date would collide on the unique constraint and the
-    // request would fail with a database error; catch it here instead.
-    const dates = backfill.filter((r) => r.value.trim() !== '').map((r) => r.date)
-    if (new Set(dates).size !== dates.length) {
-      setError('Two starting values share a date. One value per day.')
-      return
-    }
-
     setSaving(true); setError('')
     try {
-      const res = await fetch('/api/metrics/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: label.trim(),
-          description: description.trim() || undefined,
-          unit,
-          category,
-          aggregation,
-          higherIsBetter,
-          target: target.trim() === '' ? null : Number(target),
-          values: backfill
-            .filter((r) => r.value.trim() !== '')
-            .map((r) => ({ date: r.date, value: Number(r.value) })),
-        }),
-      })
-      if (!res.ok) {
-        throw new Error((await res.json()).error ?? 'Could not create the metric')
+      const payload = {
+        label: label.trim(),
+        description: description.trim() || undefined,
+        unit,
+        category,
+        aggregation,
+        higherIsBetter,
+        ...(editing ? {} : { target: target.trim() === '' ? null : Number(target) }),
       }
-      reset()
-      onCreated()
+
+      const res = await fetch(
+        editing ? `/api/metrics/custom/${metric!.id}` : '/api/metrics/custom',
+        {
+          method: editing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      )
+      if (!res.ok) {
+        throw new Error((await res.json()).error ?? 'Could not save the metric')
+      }
+      const saved = await res.json()
+      onSaved(saved.metricId)
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create the metric')
+      setError(err instanceof Error ? err.message : 'Could not save the metric')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={close} title="Create a metric" size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? `Edit ${metric!.label}` : 'Create a metric'}
+      size="lg"
+    >
       <form onSubmit={submit} className="space-y-5">
-        <p className="text-sm leading-relaxed" style={{ color: '#778DA9' }}>
-          For things the CRM has no data for — LinkedIn requests sent, content
-          published, ad spend. You record the numbers yourself, or push them in
-          from n8n. It then behaves like any other KPI.
-        </p>
+        {!editing && (
+          <p className="text-sm leading-relaxed" style={{ color: '#778DA9' }}>
+            For things the CRM has no data for — LinkedIn requests sent, content
+            published, ad spend. An automation feeds it the numbers, and it then
+            behaves like any other KPI.
+          </p>
+        )}
 
         <div>
           <label className={labelClass} style={{ color: '#778DA9' }}>Name</label>
@@ -215,86 +222,32 @@ export function CreateMetricModal({ open, onClose, onCreated }: Props) {
             </p>
           </div>
 
-          <div>
-            <label className={labelClass} style={{ color: '#778DA9' }}>
-              Target <span className="font-normal">(optional)</span>
-            </label>
-            <input
-              type="number"
-              step="any"
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              placeholder="—"
-              className={inputClass}
-            />
-            <p className="text-xs mt-1" style={{ color: '#A8B2C1' }}>
-              Editable later in Targets.
-            </p>
-          </div>
-        </div>
-
-        {/* ─── Starting values ─────────────────────────────────────────────── */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className={labelClass + ' mb-0'} style={{ color: '#778DA9' }}>
-              Starting values <span className="font-normal">(optional)</span>
-            </label>
-            <button
-              type="button"
-              onClick={addRow}
-              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors hover:bg-[rgba(65,90,119,0.08)]"
-              style={{ color: '#415A77' }}
-            >
-              <Plus size={13} />
-              Add a day
-            </button>
-          </div>
-
-          {backfill.length === 0 ? (
-            <p className="text-xs" style={{ color: '#A8B2C1' }}>
-              Add a few past days and the metric has a trend line straight away
-              instead of a single point. You can always record more later.
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              {backfill.map((row, i) => (
-                <div key={i} className="flex gap-2">
-                  <input
-                    type="date"
-                    value={row.date}
-                    onChange={(e) => updateRow(i, { date: e.target.value })}
-                    className={inputClass + ' flex-1'}
-                  />
-                  <input
-                    type="number"
-                    step="any"
-                    value={row.value}
-                    onChange={(e) => updateRow(i, { value: e.target.value })}
-                    placeholder="Value"
-                    className={inputClass + ' w-32'}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeRow(i)}
-                    className="p-2 rounded-md shrink-0 transition-colors hover:bg-[rgba(192,57,43,0.08)]"
-                    aria-label="Remove row"
-                  >
-                    <Trash2 size={14} style={{ color: '#C0392B' }} />
-                  </button>
-                </div>
-              ))}
+          {!editing && (
+            <div>
+              <label className={labelClass} style={{ color: '#778DA9' }}>
+                Target <span className="font-normal">(optional)</span>
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder="—"
+                className={inputClass}
+              />
+              <p className="text-xs mt-1" style={{ color: '#A8B2C1' }}>
+                Editable later in Targets.
+              </p>
             </div>
           )}
         </div>
 
-        {error && (
-          <p className="text-sm" style={{ color: '#C0392B' }}>{error}</p>
-        )}
+        {error && <p className="text-sm" style={{ color: '#C0392B' }}>{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
-            onClick={close}
+            onClick={onClose}
             disabled={saving}
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
           >
@@ -306,7 +259,7 @@ export function CreateMetricModal({ open, onClose, onCreated }: Props) {
             className="rounded-lg px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-40"
             style={{ background: '#415A77' }}
           >
-            {saving ? 'Creating' : 'Create metric'}
+            {saving ? 'Saving' : editing ? 'Save changes' : 'Create metric'}
           </button>
         </div>
       </form>

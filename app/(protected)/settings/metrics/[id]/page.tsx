@@ -4,10 +4,28 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import {
-  ArrowLeft, Search, Plus, X, ArrowUp, ArrowDown,
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
+  ArrowLeft, Search, Plus, X, ArrowUp, ArrowDown, GripVertical,
   TrendingUp, Lock, Check, ExternalLink,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
+import { CreateMetricModal } from '@/components/metrics/create-metric-modal'
 import { cn } from '@/lib/utils'
 import type { MetricCatalogEntry } from '@/lib/metrics/types'
 
@@ -27,6 +45,106 @@ interface MetricView {
   items: { metricId: string; order: number; showTrend: boolean }[]
 }
 
+/**
+ * One row in the selected list. Drag is bound to the grip handle only — binding
+ * it to the whole row would make the trend, arrow and remove buttons unclickable
+ * on a short drag.
+ */
+function SortableMetricRow({
+  item, index, total, meta, onMove, onToggleTrend, onRemove,
+}: {
+  item: ViewItem
+  index: number
+  total: number
+  meta: MetricCatalogEntry | undefined
+  onMove: (index: number, direction: -1 | 1) => void
+  onToggleTrend: (metricId: string) => void
+  onRemove: (metricId: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: item.metricId })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="flex items-center gap-2 rounded-lg px-2 py-2.5"
+      style={{
+        background: 'rgba(255,255,255,0.75)',
+        border: '1px solid rgba(13,27,42,0.07)',
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 10 : undefined,
+        position: 'relative',
+      }}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="p-1 rounded shrink-0 cursor-grab active:cursor-grabbing touch-none"
+        aria-label={`Reorder ${meta?.label ?? item.metricId}`}
+      >
+        <GripVertical size={14} style={{ color: '#A8B2C1' }} />
+      </button>
+
+      <span className="text-xs font-semibold w-4 text-center shrink-0" style={{ color: '#A8B2C1' }}>
+        {index + 1}
+      </span>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate" style={{ color: '#1B263B' }}>
+          {meta?.label ?? item.metricId}
+        </p>
+        <p className="text-xs truncate" style={{ color: '#778DA9' }}>
+          {meta
+            ? meta.available
+              ? meta.categoryLabel
+              : meta.unavailableLabel
+            : 'Unknown metric — no longer in the registry'}
+        </p>
+      </div>
+
+      {meta?.supportsTrend && (
+        <button
+          onClick={() => onToggleTrend(item.metricId)}
+          className="p-1.5 rounded-md shrink-0 transition-colors"
+          style={{
+            background: item.showTrend ? 'rgba(65,90,119,0.14)' : 'transparent',
+            color: item.showTrend ? '#415A77' : '#A8B2C1',
+          }}
+          title={item.showTrend ? 'Chart shown' : 'Show a trend chart'}
+        >
+          <TrendingUp size={14} />
+        </button>
+      )}
+
+      <button
+        onClick={() => onMove(index, -1)}
+        disabled={index === 0}
+        className="p-1 rounded shrink-0 disabled:opacity-20"
+        aria-label="Move up"
+      >
+        <ArrowUp size={13} style={{ color: '#778DA9' }} />
+      </button>
+      <button
+        onClick={() => onMove(index, 1)}
+        disabled={index === total - 1}
+        className="p-1 rounded shrink-0 disabled:opacity-20"
+        aria-label="Move down"
+      >
+        <ArrowDown size={13} style={{ color: '#778DA9' }} />
+      </button>
+      <button
+        onClick={() => onRemove(item.metricId)}
+        className="p-1 rounded shrink-0"
+        aria-label="Remove"
+      >
+        <X size={14} style={{ color: '#C0392B' }} />
+      </button>
+    </div>
+  )
+}
+
 export default function MetricViewEditorPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -43,6 +161,7 @@ export default function MetricViewEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -116,6 +235,25 @@ export default function MetricViewEditorPage() {
     setSaved(false)
   }
 
+  // A small distance threshold keeps a click on the grip from registering as a
+  // drag, so the handle stays usable with a mouse as well as a trackpad.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setItems((prev) => {
+      const oldIdx = prev.findIndex((i) => i.metricId === active.id)
+      const newIdx = prev.findIndex((i) => i.metricId === over.id)
+      if (oldIdx === -1 || newIdx === -1) return prev
+      return arrayMove(prev, oldIdx, newIdx)
+    })
+    setSaved(false)
+  }
+
   const move = (index: number, direction: -1 | 1) => {
     setItems((prev) => {
       const next = [...prev]
@@ -130,6 +268,27 @@ export default function MetricViewEditorPage() {
   const toggleTrend = (metricId: string) => {
     setItems((prev) =>
       prev.map((i) => (i.metricId === metricId ? { ...i, showTrend: !i.showTrend } : i))
+    )
+    setSaved(false)
+  }
+
+  /**
+   * A metric created from inside the editor is appended to the view immediately —
+   * creating it here is only ever a step toward using it, so making the user
+   * then hunt for it in the catalog would be busywork. The catalog is refetched
+   * so the new entry renders with its label and category.
+   */
+  const handleMetricCreated = async (metricId: string) => {
+    const res = await fetch('/api/metrics/registry')
+    if (res.ok) {
+      const data = await res.json()
+      setCatalog(data.metrics ?? [])
+      setCategories(data.categories ?? [])
+    }
+    setItems((prev) =>
+      prev.some((i) => i.metricId === metricId)
+        ? prev
+        : [...prev, { metricId, showTrend: false }]
     )
     setSaved(false)
   }
@@ -256,7 +415,8 @@ export default function MetricViewEditorPage() {
             In this view
           </h2>
           <p className="text-xs mb-3" style={{ color: '#778DA9' }}>
-            Cards render in this order. Toggle the trend icon to add a chart below the grid.
+            Cards render in this order — drag by the handle, or use the arrows.
+            Toggle the trend icon to add a chart below the grid.
           </p>
 
           {items.length === 0 ? (
@@ -269,90 +429,53 @@ export default function MetricViewEditorPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-1.5">
-              {items.map((item, index) => {
-                const meta = byId.get(item.metricId)
-                return (
-                  <div
-                    key={item.metricId}
-                    className="flex items-center gap-2 rounded-lg px-3 py-2.5"
-                    style={{
-                      background: 'rgba(255,255,255,0.75)',
-                      border: '1px solid rgba(13,27,42,0.07)',
-                    }}
-                  >
-                    <span
-                      className="text-xs font-semibold w-5 text-center shrink-0"
-                      style={{ color: '#A8B2C1' }}
-                    >
-                      {index + 1}
-                    </span>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: '#1B263B' }}>
-                        {meta?.label ?? item.metricId}
-                      </p>
-                      <p className="text-xs truncate" style={{ color: '#778DA9' }}>
-                        {meta
-                          ? meta.available
-                            ? meta.categoryLabel
-                            : meta.unavailableLabel
-                          : 'Unknown metric — no longer in the registry'}
-                      </p>
-                    </div>
-
-                    {meta?.supportsTrend && (
-                      <button
-                        onClick={() => toggleTrend(item.metricId)}
-                        className="p-1.5 rounded-md shrink-0 transition-colors"
-                        style={{
-                          background: item.showTrend ? 'rgba(65,90,119,0.14)' : 'transparent',
-                          color: item.showTrend ? '#415A77' : '#A8B2C1',
-                        }}
-                        title={item.showTrend ? 'Chart shown' : 'Show a trend chart'}
-                      >
-                        <TrendingUp size={14} />
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => move(index, -1)}
-                      disabled={index === 0}
-                      className="p-1 rounded shrink-0 disabled:opacity-20"
-                      aria-label="Move up"
-                    >
-                      <ArrowUp size={13} style={{ color: '#778DA9' }} />
-                    </button>
-                    <button
-                      onClick={() => move(index, 1)}
-                      disabled={index === items.length - 1}
-                      className="p-1 rounded shrink-0 disabled:opacity-20"
-                      aria-label="Move down"
-                    >
-                      <ArrowDown size={13} style={{ color: '#778DA9' }} />
-                    </button>
-                    <button
-                      onClick={() => remove(item.metricId)}
-                      className="p-1 rounded shrink-0"
-                      aria-label="Remove"
-                    >
-                      <X size={14} style={{ color: '#C0392B' }} />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={items.map((i) => i.metricId)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-1.5">
+                  {items.map((item, index) => (
+                    <SortableMetricRow
+                      key={item.metricId}
+                      item={item}
+                      index={index}
+                      total={items.length}
+                      meta={byId.get(item.metricId)}
+                      onMove={move}
+                      onToggleTrend={toggleTrend}
+                      onRemove={remove}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
 
         {/* ─── Catalog ──────────────────────────────────────────────────── */}
         <div>
-          <h2 className="text-sm font-semibold mb-1" style={{ color: '#1B263B' }}>
-            KPI catalog
-          </h2>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-semibold" style={{ color: '#1B263B' }}>
+              KPI catalog
+            </h2>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-white transition-opacity"
+              style={{ background: '#415A77' }}
+            >
+              <Plus size={13} />
+              Create metric
+            </button>
+          </div>
           <p className="text-xs mb-3" style={{ color: '#778DA9' }}>
-            Greyed metrics are defined but have no data source yet. They can be added —
-            they will render with the reason instead of a misleading zero.
+            Not listed? Create it — it is added to this view straight away.
+            Greyed metrics are defined but have no data source yet; they render
+            the reason instead of a misleading zero.
           </p>
 
           <div className="relative mb-2">
@@ -445,6 +568,12 @@ export default function MetricViewEditorPage() {
           </div>
         </div>
       </div>
+
+      <CreateMetricModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSaved={handleMetricCreated}
+      />
     </div>
   )
 }
