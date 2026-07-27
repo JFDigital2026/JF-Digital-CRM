@@ -28,6 +28,7 @@ const daySchema = z.object({
   totalOpens: z.number().int().min(0).max(1_000_000).default(0),
   suppressedOpens: z.number().int().min(0).max(1_000_000).default(0),
   replied: z.number().int().min(0).max(100_000).default(0),
+  positiveReplies: z.number().int().min(0).max(100_000).default(0),
   optedOut: z.number().int().min(0).max(100_000).default(0),
   bounced: z.number().int().min(0).max(100_000).default(0),
   linkedinSent: z.number().int().min(0).max(100_000).default(0),
@@ -43,6 +44,13 @@ const daySchema = z.object({
     .max(20)
     .optional(),
 })
+  // Positive replies are a subset of replies. Without this, a sender bug could
+  // push a Positive Response Rate higher than the Response Rate it comes out
+  // of — a contradiction that is far easier to reject here than to notice on a
+  // dashboard weeks later.
+  .refine((d) => d.positiveReplies <= d.replied, {
+    message: 'positiveReplies cannot exceed replied',
+  })
 
 const bodySchema = z.object({
   days: z.array(daySchema).min(1).max(400),
@@ -117,6 +125,7 @@ export async function POST(req: Request) {
         totalOpens: day.totalOpens,
         suppressedOpens: day.suppressedOpens,
         replied: day.replied,
+        positiveReplies: day.positiveReplies,
         optedOut: day.optedOut,
         bounced: day.bounced,
         linkedinSent: day.linkedinSent,

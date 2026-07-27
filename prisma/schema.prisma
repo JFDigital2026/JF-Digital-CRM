@@ -978,6 +978,9 @@ model OutboundDailyStat {
   totalOpens      Int      @default(0)
   suppressedOpens Int      @default(0)
   replied         Int      @default(0)
+  // Subset of `replied` the upstream classifier read as genuine interest, i.e.
+  // excluding rejections. Always <= replied.
+  positiveReplies Int      @default(0)
   optedOut        Int      @default(0)
   bounced         Int      @default(0)
   linkedinSent    Int      @default(0)

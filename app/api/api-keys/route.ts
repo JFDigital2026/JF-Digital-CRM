@@ -24,6 +24,19 @@ const READ_ONLY_SCOPES = [
   'products:read', 'metrics:read',
 ]
 
+/**
+ * The KPI push from the Lead Gen dashboard, and nothing else. A stats pusher has
+ * no reason to read a contact or create a company, so this deliberately excludes
+ * both — a leaked pusher key exposes aggregate counts, not the prospect list.
+ */
+const METRICS_PUSH_SCOPES = ['metrics:read', 'metrics:write']
+
+const PRESETS: Record<string, string[]> = {
+  readonly: READ_ONLY_SCOPES,
+  metrics: METRICS_PUSH_SCOPES,
+  full: FULL_SCOPES,
+}
+
 export async function GET() {
   const auth = await requirePermission('settings', 'manageApi')
   if (!auth.ok) return auth.response
@@ -53,11 +66,15 @@ export async function POST(req: Request) {
   const name = body.name ?? 'API Key'
 
   // Least privilege by default. Explicit scopes are filtered to the known set
-  // (blocks '*' or arbitrary values); full access is opt-in via fullAccess.
+  // (blocks '*' or arbitrary values); anything wider is opt-in via a named
+  // preset. An unrecognised preset falls through to read-only rather than
+  // erroring open.
   let scopes: string[]
   if (Array.isArray(body.scopes) && body.scopes.length > 0) {
     scopes = body.scopes.filter((s: unknown) => typeof s === 'string' && FULL_SCOPES.includes(s))
     if (scopes.length === 0) scopes = READ_ONLY_SCOPES
+  } else if (typeof body.preset === 'string' && PRESETS[body.preset]) {
+    scopes = PRESETS[body.preset]
   } else if (body.fullAccess === true) {
     scopes = FULL_SCOPES
   } else {

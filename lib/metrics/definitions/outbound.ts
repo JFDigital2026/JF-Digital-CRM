@@ -68,6 +68,49 @@ export const outboundMetrics: MetricDefinition[] = [
     series: (l, ctx) => outboundSeries(l, ctx, (r) => r.replied),
   },
   {
+    id: 'outbound.positiveReplies',
+    label: 'Positive Replies',
+    category: 'outbound',
+    unit: 'number',
+    description:
+      'Replies read as genuine interest, excluding rejections. Classified upstream by rule, correctable by hand on the Lead Gen dashboard.',
+    higherIsBetter: true,
+    resolve: async (l) => {
+      const rows = await l.outboundStats()
+      if (!rows.length) return null
+      return sum(rows.map((r) => r.positiveReplies))
+    },
+    series: (l, ctx) => outboundSeries(l, ctx, (r) => r.positiveReplies),
+  },
+  {
+    id: 'outbound.positiveReplyRate',
+    label: 'Positive Response Rate',
+    category: 'outbound',
+    unit: 'percent',
+    description:
+      'Interested replies divided by emails sent. Response Rate counts every reply including "not interested" — this is the one that moves when the offer or the targeting changes rather than the subject line.',
+    higherIsBetter: true,
+    resolve: async (l) => {
+      const rows = await l.outboundStats()
+      if (!rows.length) return null
+      return rate(sum(rows.map((r) => r.positiveReplies)), sum(rows.map((r) => r.sent)))
+    },
+  },
+  {
+    id: 'outbound.replyQuality',
+    label: 'Reply Quality',
+    category: 'outbound',
+    unit: 'percent',
+    description:
+      'Share of replies that were interested rather than a rejection. Falling here while Response Rate holds means the copy is provoking answers but the offer or the list is wrong.',
+    higherIsBetter: true,
+    resolve: async (l) => {
+      const rows = await l.outboundStats()
+      if (!rows.length) return null
+      return rate(sum(rows.map((r) => r.positiveReplies)), sum(rows.map((r) => r.replied)))
+    },
+  },
+  {
     id: 'outbound.optOuts',
     label: 'Opt Outs',
     category: 'outbound',
