@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, BarChart3, ChevronRight, Target, ArrowLeft, Sparkles, PencilLine } from 'lucide-react'
+import { Plus, Trash2, BarChart3, ChevronRight, Target, ArrowLeft, Sparkles, PencilLine, Pencil } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { CreateMetricModal } from '@/components/metrics/create-metric-modal'
-import { RecordValuesModal, type CustomMetricSummary } from '@/components/metrics/record-values-modal'
+import { MetricValuesModal, type CustomMetricSummary } from '@/components/metrics/record-values-modal'
+import type { EditableMetric } from '@/components/metrics/create-metric-modal'
 import { AGGREGATION_LABELS, UNIT_OPTIONS } from '@/lib/metrics/custom'
 import { CATEGORY_LABELS, type MetricCatalogEntry, type MetricCategory } from '@/lib/metrics/types'
 
@@ -65,6 +66,7 @@ export default function MetricsSettingsPage() {
   const [savingTarget, setSavingTarget] = useState<string | null>(null)
   const [customMetrics, setCustomMetrics] = useState<CustomMetric[]>([])
   const [showCreate, setShowCreate] = useState(false)
+  const [editMetric, setEditMetric] = useState<EditableMetric | null>(null)
   const [recordFor, setRecordFor] = useState<CustomMetricSummary | null>(null)
   const [deleteMetricId, setDeleteMetricId] = useState<string | null>(null)
 
@@ -327,6 +329,20 @@ export default function MetricsSettingsPage() {
               </div>
               <button
                 onClick={() =>
+                  setEditMetric({
+                    id: m.id, label: m.label, description: m.description,
+                    unit: m.unit, category: m.category,
+                    aggregation: m.aggregation, higherIsBetter: m.higherIsBetter,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md shrink-0 transition-colors hover:bg-[rgba(65,90,119,0.08)]"
+                style={{ color: '#415A77' }}
+              >
+                <Pencil size={13} />
+                Edit
+              </button>
+              <button
+                onClick={() =>
                   setRecordFor({
                     id: m.id, key: m.key, label: m.label,
                     unit: m.unit, aggregation: m.aggregation, metricId: m.metricId,
@@ -336,7 +352,7 @@ export default function MetricsSettingsPage() {
                 style={{ color: '#415A77' }}
               >
                 <PencilLine size={13} />
-                Record values
+                Values
               </button>
               <button
                 onClick={() => setDeleteMetricId(m.id)}
@@ -436,10 +452,17 @@ export default function MetricsSettingsPage() {
       <CreateMetricModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreated={load}
+        onSaved={load}
       />
 
-      <RecordValuesModal
+      <CreateMetricModal
+        open={!!editMetric}
+        metric={editMetric}
+        onClose={() => setEditMetric(null)}
+        onSaved={load}
+      />
+
+      <MetricValuesModal
         metric={recordFor}
         open={!!recordFor}
         onClose={() => setRecordFor(null)}

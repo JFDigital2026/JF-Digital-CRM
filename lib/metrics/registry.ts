@@ -127,10 +127,12 @@ export async function isKnownMetricAsync(id: string): Promise<boolean> {
 /**
  * Full catalog for the picker: code metrics plus user-created ones.
  *
- * A custom metric with no values recorded yet is marked unavailable with a
- * "no values recorded" reason rather than dropped, so it is visible in the
- * picker and renders an em dash instead of a zero that would read as a real
- * result.
+ * A custom metric is always `available`, including before any values land. Its
+ * resolver returns null on an empty range, which renders the same em dash a
+ * built-in metric shows in a quiet period — so a metric awaiting its first
+ * automated push looks like every other card rather than a locked, greyed-out
+ * one. `valueCount` is still reported for the settings list, which does want to
+ * point out that nothing has arrived yet.
  */
 export async function getFullCatalog(): Promise<MetricCatalogEntry[]> {
   const [rows, custom] = await Promise.all([
@@ -148,16 +150,12 @@ export async function getFullCatalog(): Promise<MetricCatalogEntry[]> {
 
   const customEntries: MetricCatalogEntry[] = custom.map((def, index) => {
     const row = rows[index]
-    const valueCount = countByMetric.get(row.id) ?? 0
     return {
       ...toCatalogEntry(def),
-      available: valueCount > 0,
-      unavailableReason: valueCount > 0 ? undefined : 'needs-values',
-      unavailableLabel: valueCount > 0 ? undefined : UNAVAILABLE_LABELS['needs-values'],
       isCustom: true,
       customMetricId: row.id,
       aggregation: row.aggregation,
-      valueCount,
+      valueCount: countByMetric.get(row.id) ?? 0,
     }
   })
 
