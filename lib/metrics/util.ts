@@ -88,6 +88,7 @@ export async function outboundSeries(
     totalOpens: number
     suppressedOpens: number
     replied: number
+    positiveReplies: number
     optedOut: number
     bounced: number
     linkedinSent: number

@@ -83,7 +83,7 @@ export default function ApiSettingsPage() {
   const [generating, setGenerating] = useState(false)
   const [showNewForm, setShowNewForm] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
-  const [fullAccess, setFullAccess] = useState(false)
+  const [preset, setPreset] = useState<'readonly' | 'metrics' | 'full'>('readonly')
   const [newKeyValue, setNewKeyValue] = useState<{ key: string; name: string } | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
   const [showWebhooks, setShowWebhooks] = useState(false)
@@ -117,13 +117,13 @@ export default function ApiSettingsPage() {
       const res = await fetch('/api/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, fullAccess }),
+        body: JSON.stringify({ name, preset }),
       })
       if (!res.ok) return
       const data = await res.json()
       setNewKeyValue({ key: data.key, name })
       setNewKeyName('')
-      setFullAccess(false)
+      setPreset('readonly')
       setShowNewForm(false)
       await load()
     } finally {
@@ -198,15 +198,27 @@ export default function ApiSettingsPage() {
               className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-[#0D1B2A]/20"
               autoFocus
             />
-            <label className="flex items-center gap-2 text-xs text-gray-600 select-none">
-              <input
-                type="checkbox"
-                checked={fullAccess}
-                onChange={(e) => setFullAccess(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              Full access (read &amp; write). Leave unchecked for a read-only key.
-            </label>
+            <div className="space-y-1.5">
+              {([
+                { id: 'readonly', label: 'Read only', hint: 'Everything readable, nothing writable.' },
+                { id: 'metrics', label: 'Metrics push', hint: 'KPI ingest only — no access to contacts or companies. Use this for the Lead Gen sync.' },
+                { id: 'full', label: 'Full access', hint: 'Read and write across every resource.' },
+              ] as const).map((opt) => (
+                <label key={opt.id} className="flex items-start gap-2 text-xs text-gray-600 select-none cursor-pointer">
+                  <input
+                    type="radio"
+                    name="key-preset"
+                    checked={preset === opt.id}
+                    onChange={() => setPreset(opt.id)}
+                    className="mt-0.5 border-gray-300"
+                  />
+                  <span>
+                    <span className="font-medium text-gray-800">{opt.label}</span>
+                    <span className="text-gray-500"> — {opt.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={generate}
@@ -216,7 +228,7 @@ export default function ApiSettingsPage() {
                 {generating ? 'Generating…' : 'Generate'}
               </button>
               <button
-                onClick={() => { setShowNewForm(false); setFullAccess(false) }}
+                onClick={() => { setShowNewForm(false); setPreset('readonly') }}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
               >
                 Cancel
