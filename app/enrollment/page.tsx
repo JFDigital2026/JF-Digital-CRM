@@ -63,12 +63,37 @@ function newLine(): ServiceLine {
   return { uid: Math.random().toString(36).slice(2), productId: '', amount: '', chargeType: 'deposit', durationMonths: null }
 }
 
+// Pricing decision 5.0 (2026-08-12): THE RETAINER IS NEVER DISCOUNTED.
+// Not for commitment term, not for founding status, not for anything. Every
+// discount this business gives comes out of the one-time setup fee instead.
+//
+// Why: the old model cut the retainer 25% at 18 months, landing at $375/mo on a
+// $500 base — the same number the founding program offered, so a founding client
+// paid exactly what any 18-month client paid, and it sat below the $500 retainer
+// floor. A retainer discount is also permanent ($125/mo x 18 = $2,250 out of MRR,
+// the metric being grown). The same money given once off setup costs the same and
+// leaves MRR clean.
+//
+// Canonical source: JF Digital AIOS vault, wiki/concepts/pricing-model.md
 function calcTiers(base: number) {
   return {
     price6:  base,
-    price12: parseFloat((base * 0.85).toFixed(2)),
-    price18: parseFloat((base * 0.75).toFixed(2)),
+    price12: base,
+    price18: base,
   }
+}
+
+// Commitment term now discounts the SETUP FEE. Founding clients (first 10) get an
+// additional 50% off setup. Discounts stack, but setup never goes below $1,500.
+const SETUP_FLOOR = 1500
+const TERM_SETUP_DISCOUNT: Record<number, number> = { 6: 0, 12: 0.15, 18: 0.25 }
+const FOUNDING_SETUP_DISCOUNT = 0.5
+
+function calcSetupFee(rawSetup: number, months: number, founding: boolean) {
+  if (rawSetup <= 0) return 0
+  const afterTerm = rawSetup * (1 - (TERM_SETUP_DISCOUNT[months] ?? 0))
+  const afterFounding = founding ? afterTerm * (1 - FOUNDING_SETUP_DISCOUNT) : afterTerm
+  return Math.max(SETUP_FLOOR, Math.round(afterFounding))
 }
 
 function fmtMoney(n: number) {
@@ -123,6 +148,9 @@ function EnrollmentForm() {
   const [calcSavings,    setCalcSavings]    = useState('')
   const [calcSetupPct,   setCalcSetupPct]   = useState<10 | 12 | 15>(12)
   const [calcRetainerPct,setCalcRetainerPct]= useState<1 | 1.2 | 1.5>(1.2)
+  // Decision 5.0: term + founding status discount the SETUP fee, never the retainer.
+  const [calcTerm,       setCalcTerm]       = useState<6 | 12 | 18>(18)
+  const [calcFounding,   setCalcFounding]   = useState(true)
 
   useEffect(() => {
     async function loadProducts() {
@@ -464,9 +492,18 @@ function EnrollmentForm() {
                   {/* ── Savings Calculator ── */}
                   {(() => {
                     const savings = parseFloat(calcSavings) || 0
-                    const setupFee = savings > 0 ? Math.round(savings * calcSetupPct / 100) : 0
+                    const rawSetup = savings > 0 ? Math.round(savings * calcSetupPct / 100) : 0
+                    // Decision 5.0: discounts land here, on the one-time fee, never on the retainer.
+                    const setupFee = calcSetupFee(rawSetup, calcTerm, calcFounding)
                     const half = Math.round(setupFee / 2)
-                    const retainerBase = savings > 0 ? Math.round(savings * calcRetainerPct / 100) : 0
+                    // Retainer is the raw percentage with the $500 floor. Nothing discounts it.
+                    const retainerBase = savings > 0 ? Math.max(500, Math.round(savings * calcRetainerPct / 100)) : 0
+                    // Vault rule: client sees a minimum 3x return in YEAR ONE.
+                    // Year-one cost = setup + 12 months of retainer, against annual savings.
+                    const yearOneCost = setupFee + retainerBase * 12
+                    const roi = yearOneCost > 0 ? savings / yearOneCost : 0
+                    const setupDiscounted = rawSetup > 0 && setupFee < rawSetup
+                    const setupAtFloor = rawSetup > 0 && setupFee === SETUP_FLOOR
                     const canApply = savings > 0
                     return (
                       <div className="mb-5 p-4 rounded-xl border-2 border-[#415A77]/20 bg-[#415A77]/[0.04]">
@@ -504,20 +541,55 @@ function EnrollmentForm() {
                             </div>
                           </div>
                         </div>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className="mb-1.5 block text-[10px] font-medium text-gray-500">Term (discounts setup)</label>
+                            <div className="flex rounded-lg border border-[#415A77]/20 overflow-hidden">
+                              {([6, 12, 18] as const).map((m) => (
+                                <button key={m} type="button" onClick={() => setCalcTerm(m)}
+                                  className={`flex-1 py-1.5 text-[11px] font-bold transition-colors ${calcTerm === m ? 'bg-[#415A77] text-white' : 'text-[#5a6a7e] hover:bg-[#415A77]/5 bg-white'}`}>
+                                  {m}mo
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-[10px] font-medium text-gray-500">Founding client (first 10)</label>
+                            <button type="button" onClick={() => setCalcFounding((v) => !v)}
+                              className={`w-full rounded-lg border py-1.5 text-[11px] font-bold transition-colors ${calcFounding ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-[#5a6a7e] border-[#415A77]/20 hover:bg-[#415A77]/5'}`}>
+                              {calcFounding ? '50% off setup' : 'Standard pricing'}
+                            </button>
+                          </div>
+                        </div>
                         {canApply && (
                           <div className="mb-3 rounded-lg bg-white border border-[#415A77]/15 divide-y divide-[#415A77]/10 text-xs">
                             <div className="flex justify-between px-3 py-2">
                               <span className="text-[#8a9bb0]">Setup fee ({calcSetupPct}%)</span>
-                              <span className="font-bold text-[#0D1B2A]">${setupFee.toLocaleString()} <span className="font-normal text-[#8a9bb0]">(${half.toLocaleString()} + ${half.toLocaleString()})</span></span>
+                              <span className="font-bold text-[#0D1B2A]">
+                                {setupDiscounted && <span className="mr-1.5 font-normal text-[#8a9bb0] line-through">${rawSetup.toLocaleString()}</span>}
+                                ${setupFee.toLocaleString()} <span className="font-normal text-[#8a9bb0]">(${half.toLocaleString()} + ${half.toLocaleString()})</span>
+                              </span>
                             </div>
+                            {setupDiscounted && (
+                              <div className="flex justify-between px-3 py-2">
+                                <span className="text-[#8a9bb0]">Setup discounts applied</span>
+                                <span className="font-semibold text-emerald-600">
+                                  {calcTerm !== 6 && `${Math.round((TERM_SETUP_DISCOUNT[calcTerm] ?? 0) * 100)}% term`}
+                                  {calcTerm !== 6 && calcFounding && ' + '}
+                                  {calcFounding && '50% founding'}
+                                  {setupAtFloor && <span className="ml-1.5 text-[#8a9bb0]">(floor $1,500)</span>}
+                                </span>
+                              </div>
+                            )}
                             <div className="flex justify-between px-3 py-2">
-                              <span className="text-[#8a9bb0]">Retainer base ({calcRetainerPct}%/mo)</span>
+                              <span className="text-[#8a9bb0]">Retainer ({calcRetainerPct}%/mo, never discounted)</span>
                               <span className="font-bold text-[#0D1B2A]">${retainerBase.toLocaleString()}/mo</span>
                             </div>
                             <div className="flex justify-between px-3 py-2">
-                              <span className="text-[#8a9bb0]">Client 10× ROI check</span>
-                              <span className={`font-bold ${savings >= (setupFee + retainerBase * 18) * 10 / 10 ? 'text-emerald-600' : 'text-[#0D1B2A]'}`}>
-                                {setupFee + retainerBase * 18 > 0 ? `${(savings / (setupFee + retainerBase * 18)).toFixed(1)}× year-one` : '—'}
+                              <span className="text-[#8a9bb0]">Client 3× ROI check (year one)</span>
+                              <span className={`font-bold ${roi >= 3 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {yearOneCost > 0 ? `${roi.toFixed(1)}× year-one` : '—'}
+                                {yearOneCost > 0 && roi < 3 && <span className="ml-1.5 font-normal text-[10px]">below 3×, widen or walk</span>}
                               </span>
                             </div>
                           </div>
@@ -574,20 +646,20 @@ function EnrollmentForm() {
                           onChange={(e) => setSetupBaseFee(e.target.value)}
                           placeholder="0.00" className={fieldCls + ' pl-6'} />
                       </div>
-                      <p className="text-[10px] text-[#8a9bb0] mt-1">6 mo = base · 12 mo = 15% off · 18 mo = 25% off</p>
+                      <p className="text-[10px] text-[#8a9bb0] mt-1">Same rate at every term. Longer commitment discounts the SETUP fee, not the monthly.</p>
                     </div>
 
                     {tiers && (
                       <div className="rounded-lg border border-[#415A77]/15 overflow-hidden">
                         {([
-                          { months: 6,  label: '6 Months',  price: tiers.price6,  discount: null },
-                          { months: 12, label: '12 Months', price: tiers.price12, discount: 15 },
-                          { months: 18, label: '18 Months', price: tiers.price18, discount: 25 },
+                          { months: 6,  label: '6 Months',  price: tiers.price6,  setupOff: null },
+                          { months: 12, label: '12 Months', price: tiers.price12, setupOff: 15 },
+                          { months: 18, label: '18 Months', price: tiers.price18, setupOff: 25 },
                         ] as const).map((tier, i) => (
                           <div key={tier.months} className={`flex items-center justify-between px-3 py-2.5 ${i > 0 ? 'border-t border-[#415A77]/10' : ''} ${tier.months === 18 ? 'bg-[#415A77]/5' : ''}`}>
                             <div className="flex items-center gap-1.5">
                               <span className="text-sm font-semibold text-[#0D1B2A]">{tier.label}</span>
-                              {tier.discount && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">{tier.discount}% off</span>}
+                              {tier.setupOff && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">{tier.setupOff}% off setup</span>}
                               {tier.months === 18 && <span className="text-[10px] font-semibold text-[#415A77] bg-[#415A77]/10 rounded px-1.5 py-0.5">Default</span>}
                             </div>
                             <div className="text-right">
@@ -697,11 +769,13 @@ function EnrollmentForm() {
                 {recurringLine && (() => {
                   const base  = recurringLine.baseFee ?? 0
                   const tiers = base > 0 ? calcTiers(base) : null
+                  // Decision 5.0: the retainer is identical at every term. What the term buys
+                  // is a discount on the one-time setup fee.
                   const RDUR = tiers
                     ? [
-                        { months: 18 as const, label: '18 Months', price: tiers.price18, savings: (base - tiers.price18) * 18, badge: 'Best Value' },
-                        { months: 12 as const, label: '12 Months', price: tiers.price12, savings: (base - tiers.price12) * 12, badge: null },
-                        { months: 6  as const, label: '6 Months',  price: tiers.price6,  savings: 0,                           badge: null },
+                        { months: 18 as const, label: '18 Months', price: tiers.price18, setupOff: 25, badge: 'Best Value' },
+                        { months: 12 as const, label: '12 Months', price: tiers.price12, setupOff: 15, badge: null },
+                        { months: 6  as const, label: '6 Months',  price: tiers.price6,  setupOff: 0,  badge: null },
                       ]
                     : []
                   const activeDuration = recurringLine.durationMonths ?? 18
@@ -722,10 +796,9 @@ function EnrollmentForm() {
                         {RDUR.map((tier, i) => {
                           const isActive    = activeDuration === tier.months
                           const rowTotal    = tier.price * tier.months
-                          const hasDiscount = tier.price < base
-                          const monthsFree  = base > 0 && tier.savings > 0
-                            ? Math.round((tier.savings / base) * 10) / 10
-                            : 0
+                          // Retainer never varies by term now (decision 5.0), so there is never
+                          // a monthly strikethrough. The term's value shows up on the setup fee.
+                          const hasDiscount = false
 
                           return (
                             <button
@@ -747,11 +820,10 @@ function EnrollmentForm() {
                                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">{tier.badge}</span>
                                     )}
                                   </div>
-                                  {monthsFree > 0 && (
-                                    <p className="text-[11px] text-[#8a9bb0]">Save ${fmtMoney(tier.savings)} — that&apos;s {monthsFree} months free</p>
-                                  )}
-                                  {!hasDiscount && (
-                                    <p className="text-[11px] text-[#8a9bb0]">No commitment discount applied</p>
+                                  {tier.setupOff > 0 ? (
+                                    <p className="text-[11px] text-[#8a9bb0]">{tier.setupOff}% off the setup fee. Retainer stays ${fmtMoney(base)}/mo.</p>
+                                  ) : (
+                                    <p className="text-[11px] text-[#8a9bb0]">Full setup fee. Retainer stays ${fmtMoney(base)}/mo.</p>
                                   )}
                                 </div>
 
