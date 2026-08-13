@@ -10,11 +10,13 @@ export default withAuth({
   },
 })
 
-// Static image files in /public are excluded too. Without that, assets like the
-// logo on the public booking page get redirected to /login for logged-out
-// visitors and render broken.
+// Everything a logged-out visitor or a link crawler needs is excluded here:
+// the public booking surfaces, static image files in /public, and robots.txt.
+// Anything left in still redirects to /login. robots.txt matters specifically
+// because crawlers fetch it first, and LinkedIn treats a redirect to a login
+// page as "do not crawl", which blocked booking-link previews entirely.
 export const config = {
   matcher: [
-    '/((?!login|book|reschedule|_next/static|_next/image|favicon.ico|api|pay|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)',
+    '/((?!login|book|reschedule|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|api|pay|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)',
   ],
 }
