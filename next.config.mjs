@@ -35,6 +35,12 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Next 14 only loads instrumentation.ts when this flag is set. Without it the
+  // file is silently skipped, so the automation watcher and the queue processor
+  // never start.
+  experimental: {
+    instrumentationHook: true,
+  },
   async headers() {
     return [
       {
