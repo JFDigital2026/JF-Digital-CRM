@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import DOMPurify from 'isomorphic-dompurify'
+// Plain dompurify, not isomorphic-dompurify. The isomorphic build pulls jsdom in
+// on the server, and jsdom's html-encoding-sniffer now require()s an ESM-only
+// package, which throws ERR_REQUIRE_ESM and 500s the whole route. Sanitizing runs
+// after mount (see LeftPanel), so the browser DOM is always available.
+import DOMPurify from 'dompurify'
 import {
   format,
   startOfMonth,
@@ -96,6 +100,22 @@ function LeftPanel({
     : null
   const timeLabel = selectedTime ? formatTime12(selectedTime) : null
 
+  // Sanitize after mount so DOMPurify only ever runs against a real browser DOM.
+  const [cleanDescription, setCleanDescription] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!config.description) {
+      setCleanDescription(null)
+      return
+    }
+    setCleanDescription(
+      DOMPurify.sanitize(config.description, {
+        ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'span'],
+        ALLOWED_ATTR: ['href', 'target', 'rel'],
+      })
+    )
+  }, [config.description])
+
   return (
     <div className="w-[300px] shrink-0 px-8 py-10 border-r border-[#d1d5db]">
       {onBack && (
@@ -144,15 +164,10 @@ function LeftPanel({
       )}
 
       {/* Description */}
-      {config.description && (
+      {cleanDescription && (
         <div
           className="mt-5 text-sm text-[#6b7d8e] leading-relaxed prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{
-            __html: DOMPurify.sanitize(config.description, {
-              ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'span'],
-              ALLOWED_ATTR: ['href', 'target', 'rel'],
-            }),
-          }}
+          dangerouslySetInnerHTML={{ __html: cleanDescription }}
         />
       )}
     </div>

@@ -10,6 +10,11 @@ export default withAuth({
   },
 })
 
+// Static image files in /public are excluded too. Without that, assets like the
+// logo on the public booking page get redirected to /login for logged-out
+// visitors and render broken.
 export const config = {
-  matcher: ['/((?!login|book|reschedule|_next/static|_next/image|favicon.ico|api|pay).*)'],
+  matcher: [
+    '/((?!login|book|reschedule|_next/static|_next/image|favicon.ico|api|pay|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)',
+  ],
 }
