@@ -78,7 +78,7 @@ export async function GET() {
         include: { product: { select: { price: true } } },
       }),
       prisma.automationLog.count({ where: { executedAt: thisMonth } }),
-      prisma.automationLog.count({ where: { status: 'FAILED' as any, executedAt: thisMonth } }),
+      prisma.automationLog.count({ where: { status: 'FAILURE', executedAt: thisMonth } }),
       prisma.task.findMany({
         where: { dueDate: { gt: todayEnd }, status: { not: 'COMPLETED' } },
         take: 5,
