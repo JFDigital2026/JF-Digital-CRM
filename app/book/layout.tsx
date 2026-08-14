@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { jfFontVars } from '@/lib/public-fonts'
+import '../brand-public.css'
 
 // The root layout's metadata is "CRM / CRM Application", which is what link
 // previews (LinkedIn, iMessage, Slack) would show for a public booking link.
@@ -26,8 +28,9 @@ export const metadata: Metadata = {
 
 export default function BookLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#e8ebee]">
-      {children}
+    <div className={`jf-public ${jfFontVars} relative min-h-screen`}>
+      <div className="jf-public-bg" aria-hidden />
+      <div className="relative z-[1]">{children}</div>
     </div>
   )
 }

@@ -10,6 +10,28 @@ type EventInfo = {
   calSlug: string
 }
 
+// ─── Shell ────────────────────────────────────────────────────────────────────
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="w-full max-w-[440px]">
+        <div className="jf-card jf-rise px-8 py-10 sm:px-10">{children}</div>
+        <p className="mt-6 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[var(--jf-t22)]">
+          JF Digital
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function Logo() {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/jf-digital-logo.png" alt="JF Digital" className="mb-6 h-9 w-auto object-contain" />
+  )
+}
+
 export default function ReschedulePage() {
   const { token } = useParams<{ token: string }>()
   const router = useRouter()
@@ -46,33 +68,40 @@ export default function ReschedulePage() {
 
   if (loading) {
     return (
-      <div style={page}>
-        <div style={card}>
-          <p style={sub}>Loading…</p>
+      <Shell>
+        <div className="flex items-center gap-3">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[rgba(92,80,63,0.5)] border-t-[var(--jf-gold)]" />
+          <p className="text-[13px] text-[var(--jf-t55)]">Loading…</p>
         </div>
-      </div>
+      </Shell>
     )
   }
 
   if (error) {
     return (
-      <div style={page}>
-        <div style={card}>
-          <p style={heading}>Link unavailable</p>
-          <p style={sub}>{error}</p>
-        </div>
-      </div>
+      <Shell>
+        <Logo />
+        <h1 className="jf-display mb-2 text-[26px] text-[var(--jf-t100)]">
+          Link <span className="jf-accent">unavailable</span>.
+        </h1>
+        <p className="text-[13px] leading-relaxed text-[var(--jf-t55)]">{error}</p>
+      </Shell>
     )
   }
 
   if (done) {
     return (
-      <div style={page}>
-        <div style={card}>
-          <p style={heading}>Appointment cancelled.</p>
-          <p style={sub}>Taking you to book a new time…</p>
+      <Shell>
+        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(189,157,98,0.35)] bg-[var(--jf-fill)] shadow-[0_0_40px_rgba(189,157,98,0.14)]">
+          <svg className="h-5 w-5 text-[var(--jf-gold)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
         </div>
-      </div>
+        <h1 className="jf-display mb-2 text-[26px] text-[var(--jf-t100)]">
+          Appointment <span className="jf-accent">cancelled</span>.
+        </h1>
+        <p className="text-[13px] text-[var(--jf-t55)]">Taking you to book a new time…</p>
+      </Shell>
     )
   }
 
@@ -81,76 +110,33 @@ export default function ReschedulePage() {
   const timeDisplay = dt?.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 
   return (
-    <div style={page}>
-      <div style={card}>
-        <p style={label}>Reschedule</p>
-        <p style={heading}>{info?.calName}</p>
-        <p style={sub}>{dateDisplay} at {timeDisplay}</p>
+    <Shell>
+      <Logo />
+      <p className="jf-eyebrow mb-3">Reschedule</p>
+      <h1 className="jf-display text-[26px] leading-[1.15] text-[var(--jf-t100)]">{info?.calName}</h1>
 
-        <p style={{ margin: '24px 0', color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
-          Clicking below will cancel this appointment and open the booking page so you can pick a new time.
-        </p>
+      <div className="my-6 h-px w-full bg-[var(--jf-line-soft)]" />
 
-        <button
-          onClick={handleCancel}
-          disabled={cancelling}
-          style={{
-            background: '#0D1B2A',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 10,
-            padding: '12px 28px',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: cancelling ? 'not-allowed' : 'pointer',
-            opacity: cancelling ? 0.7 : 1,
-            width: '100%',
-          }}
-        >
-          {cancelling ? 'Cancelling…' : 'Cancel & Pick a New Time'}
-        </button>
+      <div className="flex items-center gap-2.5">
+        <svg className="h-4 w-4 shrink-0 text-[var(--jf-t38)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <span className="text-[13px] text-[var(--jf-t80)]">
+          {dateDisplay} at {timeDisplay}
+        </span>
       </div>
-    </div>
+
+      <p className="my-7 text-[13px] leading-relaxed text-[var(--jf-t55)]">
+        Continuing will cancel this appointment and open the booking page so you can pick a new time.
+      </p>
+
+      <button onClick={handleCancel} disabled={cancelling} className="jf-btn">
+        <span className="jf-btn-shimmer" />
+        {cancelling ? 'Cancelling…' : 'Cancel & Pick a New Time'}
+      </button>
+    </Shell>
   )
-}
-
-const page: React.CSSProperties = {
-  minHeight: '100vh',
-  background: '#f3f4f6',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '24px 16px',
-  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-}
-
-const card: React.CSSProperties = {
-  background: '#fff',
-  borderRadius: 16,
-  padding: '40px 36px',
-  maxWidth: 420,
-  width: '100%',
-  boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
-}
-
-const label: React.CSSProperties = {
-  margin: '0 0 6px',
-  color: '#6b7280',
-  fontSize: 12,
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.8px',
-}
-
-const heading: React.CSSProperties = {
-  margin: '0 0 4px',
-  color: '#0D1B2A',
-  fontSize: 22,
-  fontWeight: 700,
-}
-
-const sub: React.CSSProperties = {
-  margin: 0,
-  color: '#6b7280',
-  fontSize: 14,
 }

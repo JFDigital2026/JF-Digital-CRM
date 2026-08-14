@@ -1,0 +1,347 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   JF Digital — public-facing surfaces (booking + reschedule).
+
+   Mirrors the marketing site (jf-digital.com) so a prospect moving from the site
+   to a booking link never leaves the brand. Palette is locked to the four
+   sanctioned colors from the v3.1 style guide; hierarchy comes from opacity
+   variation only, never new hues.
+
+   Scoped under .jf-public so none of this leaks into the authenticated CRM,
+   which keeps its own navy/slate theme.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.jf-public {
+  --jf-bg: #1b1b1b;
+  --jf-gold: #bd9d62;
+  --jf-brown: #5c503f;
+
+  /* Text ramp — opacity steps off the gold, matching the site's --text-* scale */
+  --jf-t100: #bd9d62;
+  --jf-t80: rgba(189, 157, 98, 0.8);
+  --jf-t70: rgba(189, 157, 98, 0.7);
+  --jf-t60: rgba(189, 157, 98, 0.6);
+  --jf-t55: rgba(189, 157, 98, 0.55);
+  --jf-t38: rgba(189, 157, 98, 0.38);
+  --jf-t30: rgba(189, 157, 98, 0.3);
+  --jf-t22: rgba(189, 157, 98, 0.22);
+
+  /* Lines & fills */
+  --jf-line: rgba(92, 80, 63, 0.35);
+  --jf-line-soft: rgba(92, 80, 63, 0.22);
+  --jf-fill: rgba(189, 157, 98, 0.05);
+  --jf-fill-hover: rgba(189, 157, 98, 0.09);
+
+  /* Also set on the wrapper, not just the fixed layer, so a page taller than the
+     viewport never reveals the CRM's light body background behind it. */
+  background-color: #1b1b1b;
+  color: var(--jf-t100);
+  font-family: var(--font-jf-body), 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Fixed ground layer so overscroll never flashes white. */
+.jf-public-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(120% 90% at 12% -10%, rgba(92, 80, 63, 0.5) 0%, transparent 58%),
+    radial-gradient(90% 70% at 92% 108%, rgba(189, 157, 98, 0.07) 0%, transparent 60%),
+    #1b1b1b;
+  pointer-events: none;
+}
+
+/* ─── Type roles ──────────────────────────────────────────────────────────── */
+
+.jf-display {
+  font-family: var(--font-jf-display), 'Playfair Display', serif;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.jf-accent {
+  font-family: var(--font-jf-accent), 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.jf-eyebrow {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--jf-t38);
+}
+
+.jf-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--jf-t55);
+}
+
+/* ─── Card shell ──────────────────────────────────────────────────────────── */
+
+.jf-card {
+  position: relative;
+  z-index: 1;
+  border: 1px solid var(--jf-line);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(189, 157, 98, 0.04) 0%, rgba(189, 157, 98, 0.012) 100%),
+    rgba(27, 27, 27, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(189, 157, 98, 0.06);
+}
+
+/* ─── Buttons ─────────────────────────────────────────────────────────────── */
+
+/* Primary CTA — same pill treatment as the site's nav/hero buttons. */
+.jf-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  width: 100%;
+  padding: 13px 24px;
+  border: none;
+  border-radius: 9999px;
+  font-family: var(--font-jf-body), 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--jf-t100);
+  text-decoration: none;
+  cursor: pointer;
+  background: radial-gradient(ellipse at bottom, #5c503f 0%, #1b1b1b 100%);
+  box-shadow: inset 0 0 0 1px rgba(189, 157, 98, 0.24);
+  transition: transform 500ms cubic-bezier(0.15, 0.83, 0.66, 1), box-shadow 500ms ease;
+}
+
+.jf-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: inset 0 0 0 1px rgba(189, 157, 98, 0.45), 0 18px 44px rgba(189, 157, 98, 0.13);
+}
+
+.jf-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.jf-btn-shimmer {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(189, 157, 98, 0.7), transparent);
+  opacity: 0.28;
+  transition: opacity 500ms ease;
+  pointer-events: none;
+}
+
+.jf-btn:hover:not(:disabled) .jf-btn-shimmer { opacity: 0.8; }
+
+/* Compact variant for the inline "is this you?" confirm/deny pair. */
+.jf-btn-sm {
+  flex: 1 1 0%;
+  padding: 9px 14px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+/* Secondary CTA — 1px brown outline per the style guide. */
+.jf-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 24px;
+  border: 1px solid rgba(92, 80, 63, 0.55);
+  border-radius: 9999px;
+  background: transparent;
+  font-family: var(--font-jf-body), 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--jf-t70);
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 220ms ease, background 220ms ease, color 220ms ease;
+}
+
+.jf-btn-ghost:hover {
+  border-color: rgba(189, 157, 98, 0.45);
+  background: var(--jf-fill);
+  color: var(--jf-t100);
+}
+
+/* Borderless tertiary action ("Book Another"). */
+.jf-btn-quiet {
+  border-color: transparent;
+  color: var(--jf-t38);
+}
+
+.jf-btn-quiet:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--jf-t80);
+}
+
+/* ─── Inputs ──────────────────────────────────────────────────────────────── */
+
+.jf-input {
+  width: 100%;
+  border: 1px solid rgba(92, 80, 63, 0.45);
+  border-radius: 10px;
+  background: rgba(189, 157, 98, 0.035);
+  padding: 11px 13px;
+  font-family: var(--font-jf-body), 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--jf-t100);
+  outline: none;
+  transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+}
+
+.jf-input::placeholder { color: rgba(189, 157, 98, 0.26); }
+
+.jf-input:focus {
+  border-color: rgba(189, 157, 98, 0.5);
+  background: rgba(189, 157, 98, 0.06);
+  box-shadow: 0 0 0 3px rgba(189, 157, 98, 0.1);
+}
+
+/* Kill the browser's white autofill wash. */
+.jf-input:-webkit-autofill,
+.jf-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #bd9d62;
+  -webkit-box-shadow: 0 0 0 1000px #232120 inset;
+  caret-color: #bd9d62;
+}
+
+/* ─── Timezone select ─────────────────────────────────────────────────────── */
+
+.jf-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.jf-select {
+  appearance: none;
+  -webkit-appearance: none;
+  /* Tells the browser to render the native option popup dark, so the dropdown
+     itself doesn't flash white against the page. */
+  color-scheme: dark;
+  max-width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 5px 26px 5px 8px;
+  margin-left: -8px;
+  font-family: var(--font-jf-body), 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--jf-t80);
+  cursor: pointer;
+  outline: none;
+  text-overflow: ellipsis;
+  transition: border-color 200ms ease, background 200ms ease, color 200ms ease;
+}
+
+.jf-select:hover {
+  border-color: rgba(92, 80, 63, 0.5);
+  background: var(--jf-fill);
+  color: var(--jf-t100);
+}
+
+.jf-select:focus-visible {
+  border-color: rgba(189, 157, 98, 0.5);
+  background: rgba(189, 157, 98, 0.06);
+  box-shadow: 0 0 0 3px rgba(189, 157, 98, 0.1);
+}
+
+.jf-select option,
+.jf-select optgroup {
+  background-color: #1f1e1c;
+  color: #bd9d62;
+}
+
+.jf-select-chevron {
+  position: absolute;
+  right: 6px;
+  width: 14px;
+  height: 14px;
+  color: var(--jf-t38);
+  pointer-events: none;
+}
+
+.jf-select-wrap:hover .jf-select-chevron { color: var(--jf-t70); }
+
+/* ─── Scrollbar (time-slot column) ────────────────────────────────────────── */
+
+.jf-scroll { scrollbar-width: thin; scrollbar-color: rgba(92, 80, 63, 0.6) transparent; }
+
+/* Fade the last row so a clipped slot list reads as scrollable rather than cut.
+   Only applied when the list actually overflows — see TimeSlots. */
+.jf-scroll-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
+}
+
+.jf-scroll::-webkit-scrollbar { width: 6px; }
+.jf-scroll::-webkit-scrollbar-track { background: transparent; }
+.jf-scroll::-webkit-scrollbar-thumb {
+  background: rgba(92, 80, 63, 0.6);
+  border-radius: 999px;
+}
+.jf-scroll::-webkit-scrollbar-thumb:hover { background: rgba(189, 157, 98, 0.45); }
+
+/* ─── Rich-text description from the calendar config ──────────────────────── */
+
+.jf-prose { color: var(--jf-t55); font-size: 13.5px; line-height: 1.7; }
+.jf-prose p { margin: 0 0 0.7em; }
+.jf-prose p:last-child { margin-bottom: 0; }
+.jf-prose h1, .jf-prose h2, .jf-prose h3, .jf-prose h4 {
+  font-family: var(--font-jf-display), 'Playfair Display', serif;
+  font-weight: 500;
+  color: var(--jf-t100);
+  font-size: 15px;
+  margin: 0 0 0.5em;
+}
+.jf-prose strong, .jf-prose b { color: var(--jf-t80); font-weight: 500; }
+.jf-prose a { color: var(--jf-t100); text-decoration: underline; text-underline-offset: 3px; }
+.jf-prose ul { list-style: disc; margin: 0 0 0.7em; padding-left: 1.15em; }
+.jf-prose ol { list-style: decimal; margin: 0 0 0.7em; padding-left: 1.3em; }
+.jf-prose li::marker { color: var(--jf-t30); }
+.jf-prose li { margin-bottom: 0.3em; }
+.jf-prose blockquote {
+  border-left: 1px solid var(--jf-line);
+  padding-left: 12px;
+  margin: 0 0 0.7em;
+}
+
+/* ─── Entrance ────────────────────────────────────────────────────────────── */
+
+@keyframes jf-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.jf-rise { animation: jf-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .jf-rise { animation: none; }
+  .jf-btn, .jf-btn-ghost { transition: none; }
+}
