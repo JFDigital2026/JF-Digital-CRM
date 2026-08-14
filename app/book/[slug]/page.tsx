@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { zonedWallTimeToUtc } from '@/lib/timezone'
 // Plain dompurify, not isomorphic-dompurify. The isomorphic build pulls jsdom in
 // on the server, and jsdom's html-encoding-sniffer now require()s an ESM-only
 // package, which throws ERR_REQUIRE_ESM and 500s the whole route. Sanitizing runs
@@ -60,27 +61,162 @@ function formatGoogleDate(iso: string): string {
   return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
 }
 
-function getBrowserTimezone(): string {
+// ─── Timezones ────────────────────────────────────────────────────────────────
+//
+// Slots arrive from /api/calendar/availability as wall-clock strings in the
+// *calendar's* timezone, and /api/calendar/book expects that same wall-clock
+// string back. So the visitor's timezone is a display concern only: we convert
+// each slot to an absolute instant using the calendar's zone, then render it in
+// whichever zone the visitor picked. The raw slot string is what gets submitted.
+
+const TZ_STORAGE_KEY = 'jf-booking-timezone'
+
+const DEFAULT_TIMEZONE = 'America/New_York'
+
+// US zones only — the audience is US firms, so the full IANA list is noise.
+// Ordered east to west. Labels use the names people actually say, not IANA
+// city names ("Eastern Time", not "New York").
+const US_TIMEZONES: { tz: string; label: string }[] = [
+  { tz: 'America/Puerto_Rico', label: 'Atlantic Time — Puerto Rico' },
+  { tz: 'America/New_York', label: 'Eastern Time' },
+  { tz: 'America/Chicago', label: 'Central Time' },
+  { tz: 'America/Denver', label: 'Mountain Time' },
+  { tz: 'America/Phoenix', label: 'Arizona — no daylight saving' },
+  { tz: 'America/Los_Angeles', label: 'Pacific Time' },
+  { tz: 'America/Anchorage', label: 'Alaska Time' },
+  { tz: 'Pacific/Honolulu', label: 'Hawaii Time' },
+]
+
+function isSupportedTimezone(tz: string | null | undefined): boolean {
+  return !!tz && US_TIMEZONES.some((z) => z.tz === tz)
+}
+
+function tzLabel(tz: string): string {
+  return US_TIMEZONES.find((z) => z.tz === tz)?.label ?? tz
+}
+
+function getBrowserTimezoneId(): string {
   try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const offset = -new Date().getTimezoneOffset()
-    const sign = offset >= 0 ? '+' : '-'
-    const abs = Math.abs(offset)
-    const h = String(Math.floor(abs / 60)).padStart(2, '0')
-    const m = String(abs % 60).padStart(2, '0')
-    const abbr = new Intl.DateTimeFormat('en', { timeZoneName: 'short', timeZone: tz })
-      .formatToParts()
-      .find((p) => p.type === 'timeZoneName')?.value ?? ''
-    return `GMT${sign}${h}:${m} ${tz} (${abbr})`
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
   } catch {
-    return 'America/New_York'
+    return ''
   }
 }
 
-// ─── Input class ──────────────────────────────────────────────────────────────
+// Minutes east of UTC for `timeZone` at `at`, via the shortOffset name.
+function tzOffsetMinutes(timeZone: string, at: Date): number {
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' })
+      .formatToParts(at)
+      .find((p) => p.type === 'timeZoneName')?.value ?? 'GMT'
+    const m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name)
+    if (!m) return 0 // bare "GMT"
+    const sign = m[1] === '-' ? -1 : 1
+    return sign * (Number(m[2]) * 60 + Number(m[3] ?? 0))
+  } catch {
+    return 0
+  }
+}
 
-const INPUT =
-  'w-full rounded-lg border border-[#d1d5db] bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-[#6b8fa8] focus:ring-2 focus:ring-[#6b8fa8]/20 transition-colors placeholder:text-gray-400'
+function formatOffset(minutes: number): string {
+  const sign = minutes < 0 ? '-' : '+'
+  const abs = Math.abs(minutes)
+  const h = String(Math.floor(abs / 60)).padStart(2, '0')
+  const m = String(abs % 60).padStart(2, '0')
+  return `GMT${sign}${h}:${m}`
+}
+
+// YYYY-MM-DD for an instant, as seen in `timeZone`.
+function isoDateIn(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(instant)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  return `${get('year')}-${get('month')}-${get('day')}`
+}
+
+type ConvertedSlot = { time: string; dayShift: number }
+
+/**
+ * Render a calendar-timezone slot ("09:00" on `dateISO`) as it reads in
+ * `viewerTz`. `dayShift` is -1/0/+1 when the conversion crosses midnight, so the
+ * UI can flag that a slot lands on a neighbouring day for this visitor.
+ */
+function convertSlot(dateISO: string, slot: string, calendarTz: string, viewerTz: string): ConvertedSlot {
+  const instant = zonedWallTimeToUtc(dateISO, slot, calendarTz)
+  if (Number.isNaN(instant.getTime())) return { time: formatTime12(slot), dayShift: 0 }
+  try {
+    const time = new Intl.DateTimeFormat('en-US', {
+      timeZone: viewerTz, hour: 'numeric', minute: '2-digit', hour12: true,
+    }).format(instant)
+    const viewerDay = isoDateIn(instant, viewerTz)
+    const dayShift = viewerDay === dateISO ? 0 : viewerDay > dateISO ? 1 : -1
+    return { time, dayShift }
+  } catch {
+    return { time: formatTime12(slot), dayShift: 0 }
+  }
+}
+
+// ─── Shared presentation bits ─────────────────────────────────────────────────
+
+const FIELD_LABEL = 'jf-label mb-2 block'
+
+// Single Cormorant italic word per headline — the one sanctioned accent use.
+function Heading({ lead, accent }: { lead: string; accent: string }) {
+  return (
+    <h2 className="jf-display text-[22px] leading-tight text-[var(--jf-t100)] sm:text-[26px]">
+      {lead} <span className="jf-accent">{accent}</span>
+    </h2>
+  )
+}
+
+// Native select on purpose: it gives a proper wheel on mobile and keyboard
+// type-ahead on desktop for free.
+function TimezoneSelect({
+  value,
+  onChange,
+  atDate,
+}: {
+  value: string
+  onChange: (tz: string) => void
+  // Offsets are resolved against the date being booked, so a slot on the far
+  // side of a DST change shows the offset that will actually apply.
+  atDate: Date
+}) {
+  const options = useMemo(
+    () => US_TIMEZONES.map((z) => ({ ...z, offset: tzOffsetMinutes(z.tz, atDate) })),
+    [atDate]
+  )
+
+  return (
+    <div className="jf-select-wrap">
+      <select
+        className="jf-select"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label="Time zone"
+      >
+        {options.map((z) => (
+          <option key={z.tz} value={z.tz}>
+            {`${z.label} · ${formatOffset(z.offset)}`}
+          </option>
+        ))}
+      </select>
+      <svg className="jf-select-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  )
+}
+
+function Spinner({ size = 24 }: { size?: number }) {
+  return (
+    <div
+      className="animate-spin rounded-full border-2 border-[rgba(92,80,63,0.5)] border-t-[var(--jf-gold)]"
+      style={{ height: size, width: size }}
+    />
+  )
+}
 
 // ─── Left panel — meeting info ────────────────────────────────────────────────
 
@@ -89,16 +225,30 @@ function LeftPanel({
   selectedDate,
   selectedTime,
   onBack,
+  viewerTz,
 }: {
   config: CalendarConfig
   selectedDate: string
   selectedTime: string
   onBack?: () => void
+  viewerTz: string
 }) {
-  const dateLabel = selectedDate
-    ? format(new Date(selectedDate + 'T12:00:00'), 'EEE, MMM d, yyyy')
+  // Once a time is chosen, show the date the visitor's own zone puts it on —
+  // for far-east/west visitors that can be the day either side of the slot's
+  // calendar-timezone date.
+  const instant = selectedTime
+    ? zonedWallTimeToUtc(selectedDate, selectedTime, config.timezone)
     : null
-  const timeLabel = selectedTime ? formatTime12(selectedTime) : null
+  const displayDate = instant && !Number.isNaN(instant.getTime())
+    ? isoDateIn(instant, viewerTz)
+    : selectedDate
+
+  const dateLabel = displayDate
+    ? format(new Date(displayDate + 'T12:00:00'), 'EEE, MMM d, yyyy')
+    : null
+  const timeLabel = selectedTime
+    ? convertSlot(selectedDate, selectedTime, config.timezone, viewerTz).time
+    : null
 
   // Sanitize after mount so DOMPurify only ever runs against a real browser DOM.
   const [cleanDescription, setCleanDescription] = useState<string | null>(null)
@@ -117,47 +267,49 @@ function LeftPanel({
   }, [config.description])
 
   return (
-    <div className="w-[300px] shrink-0 px-8 py-10 border-r border-[#d1d5db]">
+    <div className="w-full shrink-0 border-b border-[var(--jf-line-soft)] px-7 py-8 sm:px-9 lg:w-[320px] lg:border-b-0 lg:border-r lg:py-10">
       {onBack && (
         <button
           onClick={onBack}
-          className="mb-8 flex h-9 w-9 items-center justify-center rounded-full border border-[#c5ccd4] bg-transparent hover:bg-[#d8dde3] transition-colors"
+          className="mb-7 flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(92,80,63,0.5)] text-[var(--jf-t70)] transition-colors hover:border-[rgba(189,157,98,0.45)] hover:bg-[var(--jf-fill)] hover:text-[var(--jf-t100)]"
           aria-label="Back"
         >
-          <svg className="h-4 w-4 text-[#4a5568]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
       )}
 
       {/* Logo */}
-      <div className="mb-5">
+      <div className="mb-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/jf-digital-logo.png" alt="JF Digital" className="h-10 w-auto object-contain" />
+        <img src="/jf-digital-logo.png" alt="JF Digital" className="h-11 w-auto object-contain" />
       </div>
 
-      <p className="text-xs font-semibold text-[#4a5568] mb-1">JF Digital</p>
-      <h1 className="text-2xl font-bold text-[#1a2535] mb-5">{config.name}</h1>
+      <p className="jf-eyebrow mb-3">JF Digital</p>
+      <h1 className="jf-display text-[26px] leading-[1.15] text-[var(--jf-t100)]">{config.name}</h1>
+
+      <div className="my-6 h-px w-full bg-[var(--jf-line-soft)]" />
 
       {/* Duration */}
-      <div className="flex items-center gap-2 mb-3">
-        <svg className="h-4 w-4 text-[#6b7d8e] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <div className="mb-3 flex items-center gap-2.5">
+        <svg className="h-4 w-4 shrink-0 text-[var(--jf-t38)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
           <circle cx="12" cy="12" r="10" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
         </svg>
-        <span className="text-sm text-[#4a5568] font-medium">{config.duration} min</span>
+        <span className="text-[13px] text-[var(--jf-t60)]">{config.duration} min</span>
       </div>
 
       {/* Selected date/time (once chosen) */}
       {dateLabel && (
-        <div className="flex items-center gap-2 mb-3">
-          <svg className="h-4 w-4 text-[#6b7d8e] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <div className="mb-3 flex items-center gap-2.5">
+          <svg className="h-4 w-4 shrink-0 text-[var(--jf-t38)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
             <line x1="16" y1="2" x2="16" y2="6" />
             <line x1="8" y1="2" x2="8" y2="6" />
             <line x1="3" y1="10" x2="21" y2="10" />
           </svg>
-          <span className="text-sm text-[#4a5568] font-medium">
+          <span className="text-[13px] text-[var(--jf-t80)]">
             {dateLabel}{timeLabel ? ` · ${timeLabel}` : ''}
           </span>
         </div>
@@ -166,7 +318,7 @@ function LeftPanel({
       {/* Description */}
       {cleanDescription && (
         <div
-          className="mt-5 text-sm text-[#6b7d8e] leading-relaxed prose prose-sm max-w-none"
+          className="jf-prose mt-6"
           dangerouslySetInnerHTML={{ __html: cleanDescription }}
         />
       )}
@@ -203,38 +355,43 @@ function Calendar({
       (viewMonth.getFullYear() === maxDate.getFullYear() && viewMonth.getMonth() < maxDate.getMonth())
     : true
 
+  const navBtn =
+    'flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(92,80,63,0.5)] text-[var(--jf-t70)] transition-colors hover:border-[rgba(189,157,98,0.45)] hover:bg-[var(--jf-fill)] hover:text-[var(--jf-t100)] disabled:cursor-not-allowed disabled:border-[var(--jf-line-soft)] disabled:text-[var(--jf-t22)] disabled:hover:bg-transparent'
+
   return (
-    <div className="min-w-[340px]">
+    <div className="w-full sm:min-w-[320px]">
       {/* Month nav */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="mb-5 flex items-center justify-between">
         <button
           onClick={() => setViewMonth((m) => subMonths(m, 1))}
           disabled={!canGoPrev}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d8dde3] text-[#4a5568] hover:bg-[#c8d0d8] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className={navBtn}
+          aria-label="Previous month"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <span className="text-sm font-semibold text-[#1a2535]">
+        <span className="jf-display text-[16px] text-[var(--jf-t100)]">
           {format(viewMonth, 'MMMM yyyy')}
         </span>
         <button
           onClick={() => setViewMonth((m) => addMonths(m, 1))}
           disabled={!canGoNext}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d8dde3] text-[#4a5568] hover:bg-[#c8d0d8] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className={navBtn}
+          aria-label="Next month"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
       </div>
 
       {/* Day headers */}
-      <div className="grid grid-cols-7 mb-2">
+      <div className="mb-2 grid grid-cols-7">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <div key={d} className="text-center text-xs text-[#9ca3af] font-medium py-1">
-            {d}
+          <div key={d} className="py-1 text-center text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--jf-t38)]">
+            {d.slice(0, 3)}
           </div>
         ))}
       </div>
@@ -261,12 +418,12 @@ function Calendar({
                 disabled={isPast || isBeyondMax}
                 onClick={() => onDateClick(day)}
                 className={[
-                  'relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium transition-colors',
+                  'relative flex h-9 w-9 items-center justify-center rounded-full text-[13px] transition-all duration-200',
                   isSelected
-                    ? 'bg-[#4b6070] text-white'
+                    ? 'bg-[var(--jf-gold)] font-medium text-[#1b1b1b] shadow-[0_6px_20px_rgba(189,157,98,0.28)]'
                     : isPast || isBeyondMax
-                    ? 'text-[#c0c8d0] cursor-not-allowed'
-                    : 'text-[#4a7fa8] hover:bg-[#4a7fa8]/10 cursor-pointer',
+                    ? 'cursor-not-allowed text-[var(--jf-t22)]'
+                    : 'cursor-pointer text-[var(--jf-t80)] hover:bg-[var(--jf-fill-hover)] hover:text-[var(--jf-t100)]',
                   isLoading ? 'opacity-60' : '',
                 ].join(' ')}
               >
@@ -274,7 +431,7 @@ function Calendar({
               </button>
               {/* Today dot */}
               {isTodayDay && (
-                <div className="h-1 w-1 rounded-full bg-[#4b6070] mt-0.5" />
+                <div className="mt-0.5 h-1 w-1 rounded-full bg-[var(--jf-gold)]" />
               )}
             </div>
           )
@@ -291,24 +448,47 @@ function TimeSlots({
   selectedTime,
   loading,
   onSelect,
+  selectedDate,
+  calendarTz,
+  viewerTz,
 }: {
   slots: string[]
   selectedTime: string
   loading: boolean
   onSelect: (time: string) => void
+  selectedDate: string
+  calendarTz: string
+  viewerTz: string
 }) {
+  // Fade the bottom edge only when the column is actually clipped, so a short
+  // list of slots doesn't render its last option half-dissolved.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [clipped, setClipped] = useState(false)
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) {
+      setClipped(false)
+      return
+    }
+    const measure = () => setClipped(el.scrollHeight - el.clientHeight > 4)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [slots])
+
   if (loading) {
     return (
-      <div className="flex items-start justify-center pt-8 w-full">
-        <div className="h-6 w-6 rounded-full border-2 border-[#4b6070] border-t-transparent animate-spin" />
+      <div className="flex w-full items-start justify-center pt-8">
+        <Spinner />
       </div>
     )
   }
 
   if (slots.length === 0) {
     return (
-      <div className="flex items-start pt-8 w-full">
-        <p className="text-xs text-[#9ca3af] text-center w-full">
+      <div className="flex w-full items-start pt-6 lg:pt-8">
+        <p className="w-full text-center text-[12px] leading-relaxed text-[var(--jf-t38)] lg:text-left">
           Select a date to see available times
         </p>
       </div>
@@ -316,21 +496,33 @@ function TimeSlots({
   }
 
   return (
-    <div className="flex flex-col gap-2.5 w-full pr-1">
+    <div
+      ref={scrollRef}
+      className={[
+        'jf-scroll grid w-full grid-cols-2 gap-2.5 sm:grid-cols-3 lg:max-h-[380px] lg:grid-cols-1 lg:overflow-y-auto lg:pr-2',
+        clipped ? 'jf-scroll-fade' : '',
+      ].join(' ')}
+    >
       {slots.map((slot) => {
         const active = selectedTime === slot
+        const { time, dayShift } = convertSlot(selectedDate, slot, calendarTz, viewerTz)
         return (
           <button
             key={slot}
             onClick={() => onSelect(slot)}
             className={[
-              'w-full rounded-lg border py-3 text-sm font-medium transition-colors',
+              'w-full rounded-full border py-2.5 text-[13px] transition-all duration-200',
               active
-                ? 'border-[#4b6070] bg-[#4b6070] text-white'
-                : 'border-[#c5ccd4] bg-white text-[#4a7fa8] hover:border-[#4b6070] hover:bg-[#4b6070]/5',
+                ? 'border-transparent bg-[var(--jf-gold)] font-medium text-[#1b1b1b] shadow-[0_6px_20px_rgba(189,157,98,0.25)]'
+                : 'border-[rgba(92,80,63,0.5)] text-[var(--jf-t80)] hover:-translate-y-px hover:border-[rgba(189,157,98,0.45)] hover:bg-[var(--jf-fill)] hover:text-[var(--jf-t100)]',
             ].join(' ')}
           >
-            {formatTime12(slot)}
+            {time}
+            {dayShift !== 0 && (
+              <sup className="ml-1 text-[9px] opacity-70">
+                {dayShift > 0 ? '+1' : '−1'}
+              </sup>
+            )}
           </button>
         )
       })}
@@ -441,26 +633,26 @@ function BookingForm({
   }
 
   return (
-    <div className="flex-1 px-10 py-10">
-      <h2 className="text-lg font-bold text-[#1a2535] mb-6">Your details</h2>
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-[420px]">
+    <div className="flex-1 px-7 py-8 sm:px-9 lg:px-10 lg:py-10">
+      <Heading lead="Your" accent="details" />
+
+      <form onSubmit={handleSubmit} className="mt-7 max-w-[440px] space-y-4">
 
         {/* Welcome back banner */}
         {matchedContact && (
-          <div className="rounded-xl border border-[#4b6070]/30 bg-[#4b6070]/8 px-4 py-4">
-            <p className="text-sm font-semibold text-[#1a2535] mb-0.5">
-              Welcome back, {matchedContact.firstName}!
+          <div className="jf-rise rounded-xl border border-[rgba(189,157,98,0.3)] bg-[var(--jf-fill)] px-4 py-4">
+            <p className="jf-display mb-1 text-[16px] text-[var(--jf-t100)]">
+              Welcome back, {matchedContact.firstName}.
             </p>
-            <p className="text-xs text-[#6b7d8e] mb-3">
+            <p className="mb-3.5 text-[12.5px] text-[var(--jf-t55)]">
               We found your profile — want to use it?
             </p>
-            <div className="flex gap-2">
-              <button type="button" onClick={handleConfirmMatch}
-                className="flex-1 rounded-lg bg-[#4b6070] text-white text-xs font-semibold py-2 hover:bg-[#3a4f60] transition-colors">
+            <div className="flex gap-2.5">
+              <button type="button" onClick={handleConfirmMatch} className="jf-btn jf-btn-sm">
+                <span className="jf-btn-shimmer" />
                 Yes, that&apos;s me
               </button>
-              <button type="button" onClick={handleDenyMatch}
-                className="flex-1 rounded-lg border border-[#c5ccd4] text-[#4a5568] text-xs font-medium py-2 hover:bg-gray-50 transition-colors">
+              <button type="button" onClick={handleDenyMatch} className="jf-btn-ghost jf-btn-sm">
                 Not me
               </button>
             </div>
@@ -469,81 +661,97 @@ function BookingForm({
 
         {/* Confirmed badge */}
         {confirmedContactId && (
-          <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
-            <p className="text-xs text-emerald-700 font-medium">Using your existing profile</p>
+          <div className="flex items-center justify-between rounded-lg border border-[rgba(189,157,98,0.28)] bg-[var(--jf-fill)] px-3.5 py-2.5">
+            <p className="flex items-center gap-2 text-[12px] text-[var(--jf-t80)]">
+              <svg className="h-3.5 w-3.5 text-[var(--jf-gold)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Using your existing profile
+            </p>
             <button type="button" onClick={() => { setConfirmedContactId(null); setMatchedContact(null) }}
-              className="text-xs text-emerald-500 hover:text-emerald-700 underline">
+              className="text-[12px] text-[var(--jf-t55)] underline underline-offset-2 transition-colors hover:text-[var(--jf-t100)]">
               Change
             </button>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
           <div>
-            <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
-              First name <span className="text-red-500">*</span>
+            <label className={FIELD_LABEL}>
+              First name <span className="text-[var(--jf-t38)]">*</span>
             </label>
-            <input required className={INPUT} value={form.firstName}
+            <input required className="jf-input" value={form.firstName}
               onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
-              Last name <span className="text-red-500">*</span>
+            <label className={FIELD_LABEL}>
+              Last name <span className="text-[var(--jf-t38)]">*</span>
             </label>
-            <input required className={INPUT} value={form.lastName}
+            <input required className="jf-input" value={form.lastName}
               onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} />
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
-            Email <span className="text-red-500">*</span>
+          <label className={FIELD_LABEL}>
+            Email <span className="text-[var(--jf-t38)]">*</span>
           </label>
           <div className="relative">
             <input
               required
               type="email"
-              className={INPUT}
+              className="jf-input"
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               onBlur={(e) => { if (!confirmedContactId) lookupContact(e.target.value, form.phone) }}
             />
             {lookingUp && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 rounded-full border-2 border-[#4b6070] border-t-transparent animate-spin" />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Spinner size={16} />
+              </div>
             )}
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
-            Phone <span className="text-red-500">*</span>
+          <label className={FIELD_LABEL}>
+            Phone <span className="text-[var(--jf-t38)]">*</span>
           </label>
           <input
             required
             type="tel"
-            className={INPUT}
+            className="jf-input"
             value={form.phone}
             onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
             onBlur={(e) => { if (!confirmedContactId && !matchedContact) lookupContact(form.email, e.target.value) }}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#4a5568] mb-1.5">
-            Notes <span className="text-[#9ca3af]">(optional)</span>
+          <label className={FIELD_LABEL}>
+            Notes <span className="text-[var(--jf-t30)]">(optional)</span>
           </label>
-          <textarea rows={3} className={INPUT + ' resize-none'} value={form.notes}
+          <textarea rows={3} className="jf-input resize-none" value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
         </div>
 
         {error && (
-          <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+          <p
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-[rgba(189,157,98,0.4)] bg-[rgba(92,80,63,0.22)] px-3.5 py-2.5 text-[12.5px] text-[var(--jf-t100)]"
+          >
+            <svg className="mt-px h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <circle cx="12" cy="12" r="10" />
+              <path strokeLinecap="round" d="M12 7v6" />
+              <circle cx="12" cy="16.5" r="0.6" fill="currentColor" />
+            </svg>
+            {error}
+          </p>
         )}
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-lg bg-[#4b6070] hover:bg-[#3a4f60] text-white text-sm font-semibold py-3 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {submitting ? 'Confirming…' : 'Confirm Booking'}
-        </button>
+        <div className="pt-1">
+          <button type="submit" disabled={submitting} className="jf-btn">
+            <span className="jf-btn-shimmer" />
+            {submitting ? 'Confirming…' : 'Confirm Booking'}
+          </button>
+        </div>
       </form>
     </div>
   )
@@ -555,14 +763,22 @@ function SuccessCard({
   config,
   event,
   onReset,
+  viewerTz,
 }: {
   config: CalendarConfig
   event: BookedEvent
   onReset: () => void
+  viewerTz: string
 }) {
   const startDate = new Date(event.startTime)
-  const dateLabel = format(startDate, 'EEEE, MMMM d, yyyy')
-  const timeLabel = startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  // event.startTime is an absolute instant, so render it in the zone the visitor
+  // picked and name that zone — an unlabelled time is how people miss calls.
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    timeZone: viewerTz, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  }).format(startDate)
+  const timeLabel = new Intl.DateTimeFormat('en-US', {
+    timeZone: viewerTz, hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
+  }).format(startDate)
 
   const googleUrl =
     `https://calendar.google.com/calendar/render?action=TEMPLATE` +
@@ -570,36 +786,40 @@ function SuccessCard({
     `&dates=${formatGoogleDate(event.startTime)}/${formatGoogleDate(event.endTime)}`
 
   return (
-    <div className="flex-1 px-10 py-10 flex flex-col items-center justify-center">
-      <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-5">
-        <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    <div className="jf-rise flex flex-1 flex-col items-center justify-center px-7 py-12 sm:px-9 lg:px-10">
+      <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-full border border-[rgba(189,157,98,0.35)] bg-[var(--jf-fill)] shadow-[0_0_40px_rgba(189,157,98,0.14)]">
+        <svg className="h-6 w-6 text-[var(--jf-gold)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <h2 className="text-xl font-bold text-[#1a2535] mb-1">Booking Confirmed!</h2>
-      <p className="text-sm text-[#6b7d8e] mb-6">A confirmation email has been sent.</p>
-      <div className="w-full max-w-xs bg-[#e0e4e8] rounded-xl p-4 text-left space-y-1.5 mb-6">
-        <p className="text-sm font-semibold text-[#1a2535]">{config.name}</p>
-        <p className="text-sm text-[#4a5568]">{dateLabel}</p>
-        <p className="text-sm text-[#4a5568]">{timeLabel}</p>
-        <p className="text-xs text-[#9ca3af]">{config.duration} minutes</p>
+
+      <h2 className="jf-display mb-2 text-center text-[26px] text-[var(--jf-t100)]">
+        Booking <span className="jf-accent">confirmed</span>.
+      </h2>
+      <p className="mb-7 text-center text-[13px] text-[var(--jf-t55)]">
+        A confirmation email is on its way.
+      </p>
+
+      <div className="mb-5 w-full max-w-[320px] rounded-xl border border-[var(--jf-line)] bg-[rgba(189,157,98,0.035)] p-5">
+        <p className="jf-eyebrow mb-2.5">Your appointment</p>
+        <p className="jf-display mb-2 text-[18px] leading-snug text-[var(--jf-t100)]">{config.name}</p>
+        <p className="text-[13px] text-[var(--jf-t80)]">{dateLabel}</p>
+        <p className="text-[13px] text-[var(--jf-t80)]">{timeLabel}</p>
+        <p className="mt-2 text-[12px] text-[var(--jf-t38)]">{config.duration} minutes</p>
       </div>
+
       {config.confirmationMessage && (
-        <p className="text-sm text-[#4a5568] bg-[#e0e4e8] rounded-xl p-4 mb-6 text-left w-full max-w-xs">
+        <p className="mb-6 w-full max-w-[320px] rounded-xl border border-[var(--jf-line-soft)] p-4 text-left text-[13px] leading-relaxed text-[var(--jf-t60)]">
           {config.confirmationMessage}
         </p>
       )}
-      <div className="flex flex-col gap-3 w-full max-w-xs">
-        <a
-          href={googleUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block w-full text-center border border-[#4b6070] text-[#4b6070] text-sm font-semibold py-2.5 rounded-lg hover:bg-[#4b6070]/5 transition-colors"
-        >
+
+      <div className="flex w-full max-w-[320px] flex-col gap-3">
+        <a href={googleUrl} target="_blank" rel="noopener noreferrer" className="jf-btn">
+          <span className="jf-btn-shimmer" />
           Add to Google Calendar
         </a>
-        <button onClick={onReset}
-          className="w-full text-sm text-[#9ca3af] hover:text-[#6b7d8e] py-2 transition-colors">
+        <button onClick={onReset} className="jf-btn-ghost jf-btn-quiet">
           Book Another
         </button>
       </div>
@@ -626,7 +846,39 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
   const [view, setView] = useState<'picker' | 'form' | 'success'>('picker')
   const [booked, setBooked] = useState<BookedEvent | null>(null)
 
-  const timezone = getBrowserTimezone()
+  // Default to the browser's zone, but remember an explicit choice so someone
+  // who books while travelling isn't re-correcting it every visit. Resolved
+  // after mount so the server and first client render agree.
+  const [viewerTz, setViewerTz] = useState(DEFAULT_TIMEZONE)
+  const tzResolved = useRef(false)
+
+  useEffect(() => {
+    // Wait for the config so the calendar's own zone can act as the fallback.
+    if (!config || tzResolved.current) return
+    tzResolved.current = true
+
+    let stored: string | null = null
+    try {
+      stored = window.localStorage.getItem(TZ_STORAGE_KEY)
+    } catch {
+      // Private mode / blocked storage — fall through to detection.
+    }
+
+    // Prefer a remembered choice, then the browser's zone, then the calendar's
+    // own zone. A visitor outside the US lands on the calendar's zone, which is
+    // the one the times are really in — and the select labels it plainly.
+    const candidates = [stored, getBrowserTimezoneId(), config.timezone]
+    setViewerTz(candidates.find(isSupportedTimezone) ?? DEFAULT_TIMEZONE)
+  }, [config])
+
+  const handleTimezoneChange = useCallback((tz: string) => {
+    setViewerTz(tz)
+    try {
+      window.localStorage.setItem(TZ_STORAGE_KEY, tz)
+    } catch {
+      // Non-fatal: the selection still applies for this session.
+    }
+  }, [])
 
   const maxDate = (() => {
     if (!config?.dateRange) return null
@@ -698,16 +950,21 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
 
   if (configLoading) {
     return (
-      <div className="flex justify-center py-20">
-        <div className="h-8 w-8 rounded-full border-2 border-[#4b6070] border-t-transparent animate-spin" />
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner size={30} />
       </div>
     )
   }
 
   if (configNotFound || !config) {
     return (
-      <div className="text-center py-20">
-        <p className="text-[#9ca3af] text-sm">This booking page could not be found.</p>
+      <div className="flex min-h-screen flex-col items-center justify-center px-6 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/jf-digital-logo.png" alt="JF Digital" className="mb-7 h-10 w-auto object-contain opacity-70" />
+        <h1 className="jf-display mb-2 text-[26px] text-[var(--jf-t100)]">
+          Link <span className="jf-accent">unavailable</span>.
+        </h1>
+        <p className="text-[13px] text-[var(--jf-t55)]">This booking page could not be found.</p>
       </div>
     )
   }
@@ -715,78 +972,97 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
   // ── Layout ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="w-full max-w-[1100px] mx-auto min-h-screen bg-[#e8ebee] flex">
-      {/* Left panel */}
-      <LeftPanel
-        config={config}
-        selectedDate={selectedDate}
-        selectedTime={view === 'form' ? selectedTime : ''}
-        onBack={view === 'form' ? () => { setView('picker'); setSelectedTime('') } : undefined}
-      />
-
-      {/* Right panel */}
-      {view === 'picker' && (
-        <div className="flex-1 flex flex-col px-10 py-10">
-          <h2 className="text-lg font-bold text-[#1a2535] mb-7">Select Date &amp; Time</h2>
-
-          <div className="flex gap-0 items-start">
-            {/* Calendar */}
-            <div className="shrink-0">
-              <Calendar
-                selectedDate={selectedDate}
-                onDateClick={handleDateClick}
-                loadingDate={loadingDate}
-                maxDate={maxDate}
-              />
-            </div>
-
-            {/* Divider */}
-            <div className="w-px bg-[#d1d5db] mx-8" style={{ minHeight: '360px' }} />
-
-            {/* Time slots */}
-            <div className="flex-1 max-w-[220px]">
-              {noSlots && !slotsLoading && (
-                <p className="text-xs text-red-400 mb-3">No times available on this date.</p>
-              )}
-              <TimeSlots
-                slots={slots}
-                selectedTime={selectedTime}
-                loading={slotsLoading}
-                onSelect={handleTimeSelect}
-              />
-            </div>
-          </div>
-
-          {/* Timezone */}
-          <div className="mt-8">
-            <p className="text-xs font-semibold text-[#4a5568] mb-1.5">Time zone</p>
-            <div className="flex items-center gap-2">
-              <svg className="h-4 w-4 text-[#9ca3af] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <circle cx="12" cy="12" r="10" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
-              <span className="text-sm text-[#4a5568]">{timezone}</span>
-              <svg className="h-3.5 w-3.5 text-[#9ca3af]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {view === 'form' && (
-        <BookingForm
+    <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6 lg:py-14">
+      <div className="jf-card jf-rise flex flex-col overflow-hidden lg:flex-row">
+        {/* Left panel */}
+        <LeftPanel
           config={config}
           selectedDate={selectedDate}
-          selectedTime={selectedTime}
-          onBooked={handleBooked}
+          selectedTime={view === 'form' ? selectedTime : ''}
+          onBack={view === 'form' ? () => { setView('picker'); setSelectedTime('') } : undefined}
+          viewerTz={viewerTz}
         />
-      )}
 
-      {view === 'success' && booked && (
-        <SuccessCard config={config} event={booked} onReset={handleReset} />
-      )}
+        {/* Right panel */}
+        {view === 'picker' && (
+          <div className="flex flex-1 flex-col px-7 py-8 sm:px-9 lg:px-10 lg:py-10">
+            <Heading lead="Select date &" accent="time" />
+
+            <div className="mt-7 flex flex-col items-start gap-8 lg:flex-row lg:gap-0">
+              {/* Calendar */}
+              <div className="w-full shrink-0 lg:w-auto">
+                <Calendar
+                  selectedDate={selectedDate}
+                  onDateClick={handleDateClick}
+                  loadingDate={loadingDate}
+                  maxDate={maxDate}
+                />
+              </div>
+
+              {/* Divider */}
+              <div
+                className="hidden w-px bg-[var(--jf-line-soft)] lg:mx-8 lg:block"
+                style={{ minHeight: '360px' }}
+              />
+
+              {/* Time slots */}
+              <div className="w-full lg:max-w-[220px] lg:flex-1">
+                {noSlots && !slotsLoading && (
+                  <p className="mb-3 text-[12px] text-[var(--jf-t60)]">
+                    No times available on this date.
+                  </p>
+                )}
+                <TimeSlots
+                  slots={slots}
+                  selectedTime={selectedTime}
+                  loading={slotsLoading}
+                  onSelect={handleTimeSelect}
+                  selectedDate={selectedDate}
+                  calendarTz={config.timezone}
+                  viewerTz={viewerTz}
+                />
+              </div>
+            </div>
+
+            {/* Timezone */}
+            <div className="mt-9 border-t border-[var(--jf-line-soft)] pt-5">
+              <p className="jf-eyebrow mb-2">Time zone</p>
+              <div className="flex items-center gap-2.5">
+                <svg className="h-4 w-4 shrink-0 text-[var(--jf-t38)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+                <TimezoneSelect
+                  value={viewerTz}
+                  onChange={handleTimezoneChange}
+                  atDate={selectedDate ? new Date(selectedDate + 'T12:00:00') : new Date()}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-[var(--jf-t30)]">
+                Times shown in {tzLabel(viewerTz)}.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {view === 'form' && (
+          <BookingForm
+            config={config}
+            selectedDate={selectedDate}
+            selectedTime={selectedTime}
+            onBooked={handleBooked}
+          />
+        )}
+
+        {view === 'success' && booked && (
+          <SuccessCard config={config} event={booked} onReset={handleReset} viewerTz={viewerTz} />
+        )}
+      </div>
+
+      <p className="mt-6 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[var(--jf-t22)]">
+        JF Digital
+      </p>
     </div>
   )
 }
