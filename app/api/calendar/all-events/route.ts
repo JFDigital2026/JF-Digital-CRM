@@ -19,7 +19,9 @@ export async function GET(req: Request) {
   const events = await prisma.calendarEvent.findMany({
     where,
     include: {
-      contact: { select: { id: true, firstName: true, lastName: true } },
+      // email/phone feed the calendar's appointment detail popup, so staff can
+      // reach the attendee without opening the contact record.
+      contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       calendarConfig: { select: { id: true, name: true, meetingColor: true } },
     },
     orderBy: { startTime: 'asc' },

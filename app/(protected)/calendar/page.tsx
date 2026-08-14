@@ -12,7 +12,7 @@ import {
 } from 'date-fns'
 import {
   ChevronLeft, ChevronRight, Globe, X, Clock, User, ExternalLink,
-  CalendarDays, Copy, Check, Settings, Eye, Trash2, Plus,
+  CalendarDays, Copy, Check, Settings, Eye, Trash2, Plus, FileText,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Modal } from '@/components/ui/modal'
@@ -32,7 +32,13 @@ type CRMEvent = {
   endTime: string
   status: string
   notes?: string | null
-  contact?: { id: string; firstName: string; lastName: string } | null
+  contact?: {
+    id: string
+    firstName: string
+    lastName: string
+    email?: string | null
+    phone?: string | null
+  } | null
   calendarConfig?: { id: string; name: string; meetingColor?: string | null } | null
 }
 
@@ -58,6 +64,13 @@ type DisplayEvent = {
   contactName?: string
   htmlLink?: string
   crmId?: string
+  // CRM-only detail, surfaced in the appointment popup.
+  status?: string
+  notes?: string | null
+  calendarName?: string
+  contactId?: string
+  contactEmail?: string | null
+  contactPhone?: string | null
 }
 
 type CalendarConfig = {
@@ -444,6 +457,157 @@ function CalendarCard({
   )
 }
 
+// ─── Appointment Detail Modal ─────────────────────────────────────────────────
+
+const STATUS_STYLES: Record<string, { label: string; bg: string; color: string }> = {
+  CONFIRMED: { label: 'Confirmed', bg: 'rgba(34,139,94,0.10)', color: '#1B7A4F' },
+  CANCELLED: { label: 'Cancelled', bg: 'rgba(200,64,64,0.10)', color: '#B03A3A' },
+  COMPLETED: { label: 'Completed', bg: 'rgba(65,90,119,0.12)', color: '#415A77' },
+  NO_SHOW: { label: 'No show', bg: 'rgba(190,120,40,0.12)', color: '#9A6516' },
+}
+
+function DetailRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: React.ReactNode
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="mt-0.5 shrink-0 text-[#778DA9]">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-[#778DA9]">{label}</p>
+        <div className="mt-0.5 text-sm text-[#0D1B2A] break-words">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function EventDetailModal({
+  event,
+  onClose,
+}: {
+  event: DisplayEvent | null
+  onClose: () => void
+}) {
+  const router = useRouter()
+  if (!event) return null
+
+  const isCrm = event.source === 'crm'
+  const status = event.status ? STATUS_STYLES[event.status] : null
+  const durationMins = differenceInMinutes(event.end, event.start)
+
+  return (
+    <Modal open={!!event} onClose={onClose} title="Appointment" size="md">
+      <div className="space-y-5">
+        {/* Title + source */}
+        <div className="flex items-start gap-3">
+          <span
+            className="mt-1.5 h-3 w-3 shrink-0 rounded-full"
+            style={{ backgroundColor: event.color }}
+          />
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold leading-snug text-[#0D1B2A]">{event.title}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[rgba(13,27,42,0.06)] px-2 py-0.5 text-[11px] font-medium text-[#415A77]">
+                {isCrm ? 'CRM booking' : 'Google Calendar'}
+              </span>
+              {status && (
+                <span
+                  className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                  style={{ background: status.bg, color: status.color }}
+                >
+                  {status.label}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px w-full bg-[rgba(13,27,42,0.06)]" />
+
+        <DetailRow icon={<Clock size={15} />} label="When">
+          {event.isAllDay ? (
+            <>{format(event.start, 'EEEE, MMMM d, yyyy')} · All day</>
+          ) : (
+            <>
+              {format(event.start, 'EEEE, MMMM d, yyyy')}
+              <br />
+              {format(event.start, 'h:mm a')} &ndash; {format(event.end, 'h:mm a')}
+              <span className="text-[#778DA9]"> · {durationMins} min</span>
+            </>
+          )}
+        </DetailRow>
+
+        {event.calendarName && (
+          <DetailRow icon={<CalendarDays size={15} />} label="Calendar">
+            {event.calendarName}
+          </DetailRow>
+        )}
+
+        {event.contactName && (
+          <DetailRow icon={<User size={15} />} label="Contact">
+            <p>{event.contactName}</p>
+            {event.contactEmail && (
+              <a
+                href={`mailto:${event.contactEmail}`}
+                className="mt-0.5 block text-[#415A77] hover:underline"
+              >
+                {event.contactEmail}
+              </a>
+            )}
+            {event.contactPhone && (
+              <a
+                href={`tel:${event.contactPhone}`}
+                className="block text-[#415A77] hover:underline"
+              >
+                {event.contactPhone}
+              </a>
+            )}
+          </DetailRow>
+        )}
+
+        {event.notes && (
+          <DetailRow icon={<FileText size={15} />} label="Notes">
+            <p className="whitespace-pre-wrap leading-relaxed">{event.notes}</p>
+          </DetailRow>
+        )}
+
+        {isCrm && !event.contactName && (
+          <p className="text-sm text-[#778DA9]">No contact linked to this booking.</p>
+        )}
+      </div>
+
+      <div className="mt-7 flex flex-wrap gap-2">
+        {event.contactId && (
+          <button
+            onClick={() => {
+              onClose()
+              router.push(`/contacts/${event.contactId}`)
+            }}
+            className="rounded-[10px] bg-[#0D1B2A] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            View contact
+          </button>
+        )}
+        {event.htmlLink && (
+          <a
+            href={event.htmlLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-[10px] border border-[rgba(13,27,42,0.12)] px-4 py-2 text-sm font-medium text-[#415A77] transition-colors hover:bg-[rgba(13,27,42,0.04)]"
+          >
+            Open in Google Calendar
+          </a>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // ─── Month View ───────────────────────────────────────────────────────────────
 
 function MonthView({
@@ -703,6 +867,12 @@ function CalendarPageInner() {
         ? `${e.contact.firstName} ${e.contact.lastName}`
         : undefined,
       crmId: e.id,
+      status: e.status,
+      notes: e.notes,
+      calendarName: e.calendarConfig?.name,
+      contactId: e.contact?.id,
+      contactEmail: e.contact?.email,
+      contactPhone: e.contact?.phone,
     }))
     const google: DisplayEvent[] = googleEvents.map((e) => ({
       id: e.id,
@@ -1455,6 +1625,9 @@ function CalendarPageInner() {
           </form>
         </Modal>
       )}
+
+      {/* ── APPOINTMENT DETAIL ────────────────────────────────────────────────── */}
+      <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
 
       {/* ── NEW CALENDAR MODAL (booking tab) ──────────────────────────────────── */}
       <NewCalendarModal

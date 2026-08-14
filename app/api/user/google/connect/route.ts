@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { getAppUrl } from '@/lib/app-url'
 
-export async function GET(_req: Request) {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const clientId = process.env.GOOGLE_CLIENT_ID
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:4000'
+  const appUrl = getAppUrl(req)
 
   if (!clientId) {
     return NextResponse.redirect(`${appUrl}/calendar?google=not_configured`)

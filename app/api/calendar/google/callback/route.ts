@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getAppUrl } from '@/lib/app-url'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   const userId = searchParams.get('state')
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+  // Must resolve identically to the connect route, or the token exchange fails.
+  const appUrl = getAppUrl(req)
 
   if (!code || !userId) {
     return NextResponse.redirect(`${appUrl}/calendar?google=error`)
